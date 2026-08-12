@@ -16,26 +16,28 @@ class UserModel {
     this.income = 0,
     this.monthlyBudget = 0,
   });
+
   Map<String, dynamic> toMap() {
-  return {
-    'id': id,
-    'name': name,
-    'email': email,
-    'phone': phone,
-    'password': password,
-    'income': income,
-    'monthly_budget': monthlyBudget,
-  };
-}
-factory UserModel.fromMap(Map<String, dynamic> map) {
+    return {
+      'id': id,
+      'name': name,
+      'email': email,
+      'phone': phone,
+      'password': password,
+      'income': income,
+      'monthly_budget': monthlyBudget,
+    };
+  }
+
+  factory UserModel.fromMap(Map<String, dynamic> map) {
   return UserModel(
     id: map['id'],
     name: map['name'],
     email: map['email'],
     phone: map['phone'],
     password: map['password'],
-    income: map['income'] ?? 0,
-    monthlyBudget: map['monthly_budget'] ?? 0,
+    income: (map['income'] as num?)?.toDouble() ?? 0,
+    monthlyBudget: (map['monthly_budget'] as num?)?.toDouble() ?? 0,
   );
 }
 }

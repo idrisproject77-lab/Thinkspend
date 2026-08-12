@@ -30,14 +30,14 @@ class TransactionModel {
   }
 
   factory TransactionModel.fromMap(Map<String, dynamic> map) {
-    return TransactionModel(
-      id: map['id'],
-      title: map['title'],
-      amount: map['amount'],
-      category: map['category'],
-      type: map['type'],
-      date: map['date'],
-      notes: map['notes'],
-    );
-  }
+  return TransactionModel(
+    id: map['id'],
+    title: map['title'],
+    amount: (map['amount'] as num).toDouble(),
+    category: map['category'],
+    type: map['type'],
+    date: map['date'],
+    notes: map['notes'],
+  );
+}
 }

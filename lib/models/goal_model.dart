@@ -27,13 +27,13 @@
   }
 
   factory GoalModel.fromMap(Map<String, dynamic> map) {
-    return GoalModel(
-      id: map['id'],
-      name: map['name'],
-      targetAmount: map['target_amount'],
-      currentAmount: map['current_amount'] ?? 0,
-      deadline: map['deadline'],
-      priority: map['priority'],
-    );
-  }
+  return GoalModel(
+    id: map['id'],
+    name: map['name'],
+    targetAmount: (map['target_amount'] as num).toDouble(),
+    currentAmount: (map['current_amount'] as num?)?.toDouble() ?? 0,
+    deadline: map['deadline'],
+    priority: map['priority'],
+  );
+}
 }
