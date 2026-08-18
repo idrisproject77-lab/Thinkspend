@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:thinkspend/databases/database_helper.dart';
 import 'package:thinkspend/models/goal_model.dart';
 import 'package:thinkspend/models/user_model.dart';
-import 'package:thinkspend/utils/currency_formatter.dart';
+import 'package:thinkspend/widgets/goal_card.dart';
 
 import 'add_goal_page.dart';
 import 'goal_detail_page.dart';
@@ -20,59 +20,28 @@ class GoalsPage extends StatefulWidget {
 }
 
 class _GoalsPageState extends State<GoalsPage> {
-  List<GoalModel> goals = [];
+  /// Objek Future disimpan sebagai variabel state untuk menjaga siklus hidup data.
+  /// Hal ini mencegah FutureBuilder mengeksekusi ulang query SQLite getGoals() setiap kali widget di-rebuild.
+  late Future<List<GoalModel>> _goalsFuture;
 
   @override
   void initState() {
     super.initState();
-    loadGoals();
+    _loadGoals();
   }
 
-  Future<void> loadGoals() async {
-    final data = await DatabaseHelper.instance.getGoals(
+  void _loadGoals() {
+    _goalsFuture = DatabaseHelper.instance.getGoals(
       widget.user.id!,
     );
+  }
 
-    if (!mounted) return;
-
+  /// Memperbarui _goalsFuture dan memicu re-render reaktif setelah operasi Create, Update, atau Delete.
+  Future<void> _refreshGoals() async {
     setState(() {
-      goals = data;
+      _loadGoals();
     });
-  }
-
-  double calculateProgress(GoalModel goal) {
-    if (goal.targetAmount <= 0) {
-      return 0;
-    }
-
-    final progress =
-        goal.currentAmount / goal.targetAmount;
-
-    if (progress > 1) {
-      return 1;
-    }
-
-    if (progress < 0) {
-      return 0;
-    }
-
-    return progress;
-  }
-
-  Color getPriorityColor(String? priority) {
-    switch (priority) {
-      case 'High':
-        return Colors.red;
-
-      case 'Medium':
-        return Colors.orange;
-
-      case 'Low':
-        return Colors.green;
-
-      default:
-        return Colors.grey;
-    }
+    await _goalsFuture;
   }
 
   @override
@@ -82,244 +51,126 @@ class _GoalsPageState extends State<GoalsPage> {
         title: const Text('Target Tabungan'),
       ),
 
-      body: goals.isEmpty
-          ? const Center(
-              child: Text(
-                'Belum ada target tabungan.',
-                style: TextStyle(
-                  color: Colors.grey,
+      /// FutureBuilder menangani 4 state asinkron pembacaan SQLite:
+      /// 1. Loading state (ConnectionState.waiting): Menampilkan indikator loading saat query berjalan.
+      /// 2. Error state (snapshot.hasError): Menampilkan pesan error dan opsi 'Coba Lagi'.
+      /// 3. Data kosong state: Menampilkan layout informatif kosong yang tetap dapat di-refresh.
+      /// 4. Data berhasil ditampilkan: Merender daftar kartu target tabungan secara reaktif.
+      body: FutureBuilder<List<GoalModel>>(
+        future: _goalsFuture,
+        builder: (context, snapshot) {
+          // 1. Loading state
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+
+          // 2. Error state
+          if (snapshot.hasError) {
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      size: 48,
+                      color: Colors.red,
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Terjadi kesalahan saat memuat data target:\n${snapshot.error}',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.red),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: _refreshGoals,
+                      icon: const Icon(Icons.refresh),
+                      label: const Text('Coba Lagi'),
+                    ),
+                  ],
                 ),
               ),
-            )
-          : RefreshIndicator(
-              onRefresh: loadGoals,
+            );
+          }
 
-              child: ListView.builder(
-                padding: const EdgeInsets.all(16),
-                itemCount: goals.length,
+          final goals = snapshot.data ?? [];
 
-                itemBuilder: (context, index) {
-                  final goal = goals[index];
-                  final progress =
-                      calculateProgress(goal);
-
-                  final priorityColor =
-                      getPriorityColor(
-                    goal.priority,
-                  );
-
-                  return Card(
-                    margin:
-                        const EdgeInsets.only(
-                      bottom: 16,
+          // 3. Data kosong state
+          if (goals.isEmpty) {
+            return RefreshIndicator(
+              onRefresh: _refreshGoals,
+              child: LayoutBuilder(
+                builder: (context, constraints) => SingleChildScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      minHeight: constraints.maxHeight,
                     ),
-
-                    child: InkWell(
-                      borderRadius:
-                          BorderRadius.circular(12),
-
-                      onTap: () async {
-                        final result =
-                            await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                GoalDetailPage(
-                              goal: goal,
-                            ),
-                          ),
-                        );
-
-                        if (result == true) {
-                          await loadGoals();
-                        }
-                      },
-
-                      child: Padding(
-                        padding:
-                            const EdgeInsets.all(16),
-
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-
-                          children: [
-
-                            // =========================
-                            // NAMA + PRIORITAS
-                            // =========================
-
-                            Row(
-                              children: [
-
-                                Expanded(
-                                  child: Text(
-                                    goal.name,
-
-                                    style:
-                                        const TextStyle(
-                                      fontSize: 20,
-                                      fontWeight:
-                                          FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-
-                                if (goal.priority !=
-                                    null)
-                                  Container(
-                                    padding:
-                                        const EdgeInsets
-                                            .symmetric(
-                                      horizontal: 10,
-                                      vertical: 5,
-                                    ),
-
-                                    decoration:
-                                        BoxDecoration(
-                                      color:
-                                          priorityColor
-                                              .withValues(
-                                        alpha: 0.12,
-                                      ),
-
-                                      borderRadius:
-                                          BorderRadius
-                                              .circular(
-                                        20,
-                                      ),
-                                    ),
-
-                                    child: Text(
-                                      goal.priority!,
-
-                                      style: TextStyle(
-                                        color:
-                                            priorityColor,
-                                        fontWeight:
-                                            FontWeight.bold,
-                                        fontSize: 12,
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-
-                            const SizedBox(height: 16),
-
-                            // =========================
-                            // NOMINAL
-                            // =========================
-
-                            Row(
-                              mainAxisAlignment:
-                                  MainAxisAlignment
-                                      .spaceBetween,
-
-                              children: [
-
-                                Text(
-                                formatRupiah(goal.currentAmount),
-                                  style:
-                                      const TextStyle(
-                                    fontSize: 16,
-                                    fontWeight:
-                                        FontWeight.bold,
-                                  ),
-                                ),
-
-                                Text(
-                                  'dari ${formatRupiah(goal.targetAmount)}',
-
-                                  style:
-                                      const TextStyle(
-                                    color: Colors.grey,
-                                  ),
-                                ),
-                              ],
-                            ),
-
-                            const SizedBox(height: 10),
-
-                            // =========================
-                            // PROGRESS
-                            // =========================
-
-                            ClipRRect(
-                              borderRadius:
-                                  BorderRadius
-                                      .circular(
-                                10,
-                              ),
-
-                              child:
-                                  LinearProgressIndicator(
-                                value: progress,
-                                minHeight: 10,
-                              ),
-                            ),
-
-                            const SizedBox(height: 8),
-
-                            Row(
-                              mainAxisAlignment:
-                                  MainAxisAlignment
-                                      .spaceBetween,
-
-                              children: [
-
-                                Text(
-                                  '${(progress * 100).toStringAsFixed(1)}%',
-
-                                  style:
-                                      const TextStyle(
-                                    fontWeight:
-                                        FontWeight.bold,
-                                  ),
-                                ),
-
-                                if (goal.deadline !=
-                                    null)
-                                  Text(
-                                    'Deadline: ${goal.deadline}',
-
-                                    style:
-                                        const TextStyle(
-                                      color:
-                                          Colors.grey,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ],
+                    child: const Center(
+                      child: Text(
+                        'Belum ada target tabungan.',
+                        style: TextStyle(
+                          color: Colors.grey,
                         ),
                       ),
                     ),
-                  );
-                },
+                  ),
+                ),
               ),
-            ),
+            );
+          }
 
-      floatingActionButton:
-          FloatingActionButton(
+          // 4. Data berhasil ditampilkan
+          return RefreshIndicator(
+            onRefresh: _refreshGoals,
+            child: ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: goals.length,
+              itemBuilder: (context, index) {
+                final goal = goals[index];
+
+                return GoalCard(
+                  goal: goal,
+                  onTap: () async {
+                    final result = await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => GoalDetailPage(
+                          goal: goal,
+                        ),
+                      ),
+                    );
+
+                    if (result == true) {
+                      _refreshGoals();
+                    }
+                  },
+                );
+              },
+            ),
+          );
+        },
+      ),
+
+      floatingActionButton: FloatingActionButton(
         onPressed: () async {
-          final result =
-              await Navigator.push(
+          final result = await Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) =>
-                  AddGoalPage(
+              builder: (context) => AddGoalPage(
                 user: widget.user,
               ),
             ),
           );
 
           if (result == true) {
-            await loadGoals();
+            _refreshGoals();
           }
         },
-
         child: const Icon(Icons.add),
       ),
     );

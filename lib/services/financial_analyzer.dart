@@ -61,8 +61,27 @@ class FinancialSummary {
     required this.budgetUsagePercentage,
     required this.healthStatus,
   });
+
+  Map<String, dynamic> toMap() {
+    final projectedRatio = income > 0 ? (projectedMonthlyExpense / income) * 100 : 0.0;
+    return {
+      'income': income,
+      'expense': expense,
+      'balance': balance,
+      'transactionCount': transactionCount,
+      'dataDays': dataDays,
+      'averageDailyExpense': averageDailyExpense,
+      'projectedMonthlyExpense': projectedMonthlyExpense,
+      'projectedRatio': double.parse(projectedRatio.toStringAsFixed(1)),
+      'topExpenseCategory': topExpenseCategory ?? 'Belum tersedia',
+      'topExpenseAmount': topExpenseAmount,
+      'healthStatus': healthStatus,
+      'monthlyBudget': monthlyBudget,
+    };
+  }
 }
 
+/// Engine analisis keuangan untuk menghitung metrik, proyeksi, dan status kesehatan finansial.
 class FinancialAnalyzer {
   static final DatabaseHelper _database = DatabaseHelper.instance;
 
@@ -70,6 +89,13 @@ class FinancialAnalyzer {
   // ANALYZE USER
   // ============================================================
 
+  /// Alur utama agregasi analitik finansial user:
+  /// 1. Mengambil data profil user, transaksi, dan target tabungan dari SQLite.
+  /// 2. Mengakumulasi total pemasukan, pengeluaran, dan total per kategori.
+  /// 3. Menghitung jumlah hari aktif transaksi unik (dataDays).
+  /// 4. Menghitung rata-rata pengeluaran harian dan proyeksi 30 hari (jika dataDays >= 3).
+  /// 5. Mengidentifikasi kategori pengeluaran tertinggi dan rasio penggunaan budget bulanan.
+  /// 6. Mengevaluasi status kesehatan finansial berdasarkan aturan multi-kondisi.
   static Future<FinancialSummary> analyze(int userId) async {
     // ----------------------------------------------------------
     // GET USER
@@ -243,6 +269,8 @@ class FinancialAnalyzer {
   // CALCULATE DATA DAYS
   // ============================================================
 
+  /// Menghitung jumlah hari aktif pencatatan transaksi unik.
+  /// Tanggal dinormalisasi ke format 'YYYY-MM-DD' dan disimpan dalam Set untuk menghindari duplikasi hari.
   static int _calculateDataDays(List<TransactionModel> transactions) {
     if (transactions.isEmpty) {
       return 0;
@@ -280,6 +308,11 @@ class FinancialAnalyzer {
   // HEALTH STATUS
   // ============================================================
 
+  /// Menentukan status kesehatan finansial berdasarkan matriks prioritas kondisi:
+  /// - 'Belum cukup data': jika data kosong atau rentang hari aktif < 3 hari.
+  /// - 'Berisiko': jika total pengeluaran aktual > pemasukan, atau proyeksi bulanan melebihi budget / >80% pemasukan.
+  /// - 'Perlu diperhatikan': jika proyeksi pengeluaran 80-100% dari budget, atau 60-80% dari pemasukan.
+  /// - 'Cukup sehat': jika proyeksi pengeluaran < 80% budget atau < 60% pemasukan.
   static String _calculateHealthStatus({
     required int dataDays,
     required double income,

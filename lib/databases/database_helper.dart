@@ -6,6 +6,9 @@ import 'package:thinkspend/models/goal_model.dart';
 import '../models/user_model.dart';
 import '../models/transaction_model.dart';
 
+/// Helper singleton untuk mengelola SQLite database ThinkSpend.
+/// Pola Singleton memastikan hanya ada satu koneksi database yang aktif
+/// di seluruh lifecycle aplikasi guna mencegah data lock dan inkonsistensi.
 class DatabaseHelper {
   static final DatabaseHelper instance =
       DatabaseHelper._init();
@@ -14,6 +17,7 @@ class DatabaseHelper {
 
   DatabaseHelper._init();
 
+  /// Getter database asinkron: membuka koneksi baru jika belum ada (lazy initialization).
   Future<Database> get database async {
     if (_database != null) return _database!;
 
@@ -22,6 +26,7 @@ class DatabaseHelper {
     return _database!;
   }
 
+  /// Inisialisasi file database SQLite pada path sistem perangkat dan menangani migrasi versi.
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
@@ -34,7 +39,7 @@ class DatabaseHelper {
 
       onCreate: _createDB,
 
-      // DATA LAMA DIHAPUS
+      // Migrasi database: jika ada pembaruan versi skema, tabel lama dihapus dan dibuat ulang.
       onUpgrade: (db, oldVersion, newVersion) async {
         await db.execute(
           'DROP TABLE IF EXISTS transactions',
@@ -202,6 +207,7 @@ class DatabaseHelper {
     );
   }
 
+  /// Mengambil daftar transaksi yang difilter khusus berdasarkan user_id aktif.
   Future<List<TransactionModel>> getTransactions(
     int userId,
   ) async {
@@ -266,6 +272,7 @@ class DatabaseHelper {
     );
   }
 
+  /// Mengambil daftar target tabungan yang difilter khusus berdasarkan user_id aktif.
   Future<List<GoalModel>> getGoals(
     int userId,
   ) async {

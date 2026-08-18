@@ -5,6 +5,7 @@ import 'package:thinkspend/models/user_model.dart';
 import 'package:thinkspend/pages/transaction_detail_page.dart';
 import 'add_transaction_page.dart';
 import 'package:thinkspend/utils/currency_formatter.dart';
+import 'package:thinkspend/widgets/transaction_card.dart';
 
 class TransactionsPage extends StatefulWidget {
   final UserModel user;
@@ -549,57 +550,22 @@ class _TransactionsPageState extends State<TransactionsPage> {
                   delegate: SliverChildBuilderDelegate((context, index) {
                     final transaction = filteredTransactions[index];
 
-                    final isIncome = transaction.type == 'income';
-
-                    return Card(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      child: ListTile(
-                        onTap: () async {
-                          final result = await Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => TransactionDetailPage(
-                                transaction: transaction,
-                              ),
+                    return TransactionCard(
+                      transaction: transaction,
+                      onTap: () async {
+                        final result = await Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => TransactionDetailPage(
+                              transaction: transaction,
                             ),
-                          );
-
-                          if (result == true) {
-                            await loadTransactions();
-                          }
-                        },
-
-                        leading: CircleAvatar(
-                          backgroundColor: isIncome
-                              ? Colors.green.withValues(alpha: 0.15)
-                              : Colors.red.withValues(alpha: 0.15),
-                          child: Icon(
-                            isIncome
-                                ? Icons.arrow_downward
-                                : Icons.arrow_upward,
-                            color: isIncome ? Colors.green : Colors.red,
                           ),
-                        ),
+                        );
 
-                        title: Text(
-                          transaction.title,
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-
-                        subtitle: Text(
-                          '${transaction.category} • '
-                          '${formatDate(transaction.date)}',
-                        ),
-
-                        trailing: Text(
-                          '${isIncome ? '+' : '-'} '
-                          '${formatRupiah(transaction.amount)}',
-                          style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: isIncome ? Colors.green : Colors.red,
-                          ),
-                        ),
-                      ),
+                        if (result == true) {
+                          await loadTransactions();
+                        }
+                      },
                     );
                   }, childCount: filteredTransactions.length),
                 ),
