@@ -1,0 +1,25 @@
+{
+  "name": "thinkspend-backend",
+  "version": "1.0.0",
+  "description": "Backend API for ThinkSpend AI Personal Financial Coach with Gemini API",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js"
+  },
+  "keywords": [
+    "thinkspend",
+    "gemini",
+    "financial-coach",
+    "express"
+  ],
+  "author": "ThinkSpend Team",
+  "license": "ISC",
+  "dependencies": {
+    "@google/genai": "^2.17.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}
