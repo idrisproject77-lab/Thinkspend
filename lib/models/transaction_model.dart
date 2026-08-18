@@ -1,5 +1,6 @@
 class TransactionModel {
   final int? id;
+  final int userId;
   final String title;
   final double amount;
   final String category;
@@ -9,6 +10,7 @@ class TransactionModel {
 
   TransactionModel({
     this.id,
+    required this.userId,
     required this.title,
     required this.amount,
     required this.category,
@@ -20,6 +22,7 @@ class TransactionModel {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
+      'user_id': userId,
       'title': title,
       'amount': amount,
       'category': category,
@@ -29,15 +32,18 @@ class TransactionModel {
     };
   }
 
-  factory TransactionModel.fromMap(Map<String, dynamic> map) {
-  return TransactionModel(
-    id: map['id'],
-    title: map['title'],
-    amount: (map['amount'] as num).toDouble(),
-    category: map['category'],
-    type: map['type'],
-    date: map['date'],
-    notes: map['notes'],
-  );
-}
+  factory TransactionModel.fromMap(
+    Map<String, dynamic> map,
+  ) {
+    return TransactionModel(
+      id: map['id'],
+      userId: map['user_id'] as int,
+      title: map['title'] as String,
+      amount: (map['amount'] as num).toDouble(),
+      category: map['category'] as String,
+      type: map['type'] as String,
+      date: map['date'] as String,
+      notes: map['notes'] as String?,
+    );
+  }
 }

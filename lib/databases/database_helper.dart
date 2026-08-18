@@ -1,11 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
-import '../models/goal_model.dart';
+
+import 'package:thinkspend/models/goal_model.dart';
 import '../models/user_model.dart';
 import '../models/transaction_model.dart';
 
 class DatabaseHelper {
-  static final DatabaseHelper instance = DatabaseHelper._init();
+  static final DatabaseHelper instance =
+      DatabaseHelper._init();
 
   static Database? _database;
 
@@ -15,6 +18,7 @@ class DatabaseHelper {
     if (_database != null) return _database!;
 
     _database = await _initDB('thinkspend.db');
+
     return _database!;
   }
 
@@ -24,17 +28,48 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+
+      // DATABASE VERSION BARU
+      version: 2,
+
       onCreate: _createDB,
+
+      // DATA LAMA DIHAPUS
+      onUpgrade: (db, oldVersion, newVersion) async {
+        await db.execute(
+          'DROP TABLE IF EXISTS transactions',
+        );
+
+        await db.execute(
+          'DROP TABLE IF EXISTS goals',
+        );
+
+        await db.execute(
+          'DROP TABLE IF EXISTS users',
+        );
+
+        await _createDB(db, newVersion);
+      },
     );
   }
 
-  Future<void> _createDB(Database db, int version) async {
+  // ============================================================
+  // CREATE DATABASE
+  // ============================================================
+
+  Future<void> _createDB(
+    Database db,
+    int version,
+  ) async {
+    // ----------------------------------------------------------
+    // USERS
+    // ----------------------------------------------------------
+
     await db.execute('''
       CREATE TABLE users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL,
-        email TEXT NOT NULL,
+        email TEXT NOT NULL UNIQUE,
         phone TEXT NOT NULL,
         password TEXT NOT NULL,
         income REAL DEFAULT 0,
@@ -42,9 +77,14 @@ class DatabaseHelper {
       )
     ''');
 
+    // ----------------------------------------------------------
+    // TRANSACTIONS
+    // ----------------------------------------------------------
+
     await db.execute('''
       CREATE TABLE transactions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
         title TEXT NOT NULL,
         amount REAL NOT NULL,
         category TEXT NOT NULL,
@@ -54,9 +94,14 @@ class DatabaseHelper {
       )
     ''');
 
+    // ----------------------------------------------------------
+    // GOALS
+    // ----------------------------------------------------------
+
     await db.execute('''
       CREATE TABLE goals (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
         name TEXT NOT NULL,
         target_amount REAL NOT NULL,
         current_amount REAL DEFAULT 0,
@@ -66,132 +111,241 @@ class DatabaseHelper {
     ''');
   }
 
+  // ============================================================
+  // USER
+  // ============================================================
+
+  Future<int> insertUser(
+    UserModel user,
+  ) async {
+    final db = await database;
+
+    return await db.insert(
+      'users',
+      user.toMap(),
+    );
+  }
+
+  Future<List<UserModel>> getUsers() async {
+    final db = await database;
+
+    final result =
+        await db.query('users');
+
+    return result.map((map) {
+      return UserModel.fromMap(map);
+    }).toList();
+  }
+
+  Future<UserModel?> loginUser(
+    String email,
+    String password,
+  ) async {
+    final db = await database;
+
+    final result = await db.query(
+      'users',
+      where: 'email = ? AND password = ?',
+      whereArgs: [
+        email,
+        password,
+      ],
+      limit: 1,
+    );
+
+    if (result.isEmpty) {
+      return null;
+    }
+
+    return UserModel.fromMap(
+      result.first,
+    );
+  }
+
+  Future<int> updateUser(
+    UserModel user,
+  ) async {
+    final db = await database;
+
+    return await db.update(
+      'users',
+      user.toMap(),
+      where: 'id = ?',
+      whereArgs: [user.id],
+    );
+  }
+
+  Future<int> deleteUser(
+    int id,
+  ) async {
+    final db = await database;
+
+    return await db.delete(
+      'users',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // ============================================================
+  // TRANSACTION
+  // ============================================================
+
+  Future<int> insertTransaction(
+    TransactionModel transaction,
+  ) async {
+    final db = await database;
+
+    return await db.insert(
+      'transactions',
+      transaction.toMap(),
+    );
+  }
+
+  Future<List<TransactionModel>> getTransactions(
+    int userId,
+  ) async {
+    final db = await database;
+
+    final result = await db.query(
+      'transactions',
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      orderBy: 'id ASC',
+    );
+
+    return result.map((map) {
+      return TransactionModel.fromMap(map);
+    }).toList();
+  }
+
+  Future<int> updateTransaction(
+    TransactionModel transaction,
+  ) async {
+    final db = await database;
+
+    return await db.update(
+      'transactions',
+      transaction.toMap(),
+      where: 'id = ? AND user_id = ?',
+      whereArgs: [
+        transaction.id,
+        transaction.userId,
+      ],
+    );
+  }
+
+  Future<int> deleteTransaction(
+    int id,
+    int userId,
+  ) async {
+    final db = await database;
+
+    return await db.delete(
+      'transactions',
+      where: 'id = ? AND user_id = ?',
+      whereArgs: [
+        id,
+        userId,
+      ],
+    );
+  }
+
+  // ============================================================
+  // GOALS
+  // ============================================================
+
+  Future<int> insertGoal(
+    GoalModel goal,
+  ) async {
+    final db = await database;
+
+    return await db.insert(
+      'goals',
+      goal.toMap(),
+    );
+  }
+
+  Future<List<GoalModel>> getGoals(
+    int userId,
+  ) async {
+    final db = await database;
+
+    final result = await db.query(
+      'goals',
+      where: 'user_id = ?',
+      whereArgs: [userId],
+      orderBy: 'id ASC',
+    );
+
+    return result.map((map) {
+      return GoalModel.fromMap(map);
+    }).toList();
+  }
+
+  Future<int> updateGoal(
+    GoalModel goal,
+  ) async {
+    final db = await database;
+
+    return await db.update(
+      'goals',
+      goal.toMap(),
+      where: 'id = ? AND user_id = ?',
+      whereArgs: [
+        goal.id,
+        goal.userId,
+      ],
+    );
+  }
+
+  Future<int> deleteGoal(
+    int id,
+    int userId,
+  ) async {
+    final db = await database;
+
+    return await db.delete(
+      'goals',
+      where: 'id = ? AND user_id = ?',
+      whereArgs: [
+        id,
+        userId,
+      ],
+    );
+  }
+
+  // ============================================================
+  // TEST DATABASE
+  // ============================================================
+
   Future<void> testDatabase() async {
     final db = await database;
 
     final tables = await db.rawQuery(
-      "SELECT name FROM sqlite_master WHERE type='table'",
+      "SELECT name FROM sqlite_master "
+      "WHERE type='table'",
     );
 
-    print('DATABASE THINKSPEND BERHASIL DIBUKA');
-    print('TABLES: $tables');
+    debugPrint(
+      'DATABASE THINKSPEND BERHASIL DIBUKA',
+    );
+
+    debugPrint(
+      'TABLES: $tables',
+    );
   }
-
-  Future<int> insertUser(UserModel user) async {
+  Future<bool> isEmailRegistered(String email) async {
   final db = await database;
 
-  return await db.insert(
+  final result = await db.query(
     'users',
-    user.toMap(),
-  );
-}
-
-Future<List<UserModel>> getUsers() async {
-  final db = await database;
-
-  final result = await db.query('users');
-
-  return result.map((map) {
-    return UserModel.fromMap(map);
-  }).toList();
-}
-Future<int> updateUser(UserModel user) async {
-  final db = await database;
-
-  return await db.update(
-    'users',
-    user.toMap(),
-    where: 'id = ?',
-    whereArgs: [user.id],
-  );
-}
-Future<int> deleteUser(int id) async {
-  final db = await database;
-
-  return await db.delete(
-    'users',
-    where: 'id = ?',
-    whereArgs: [id],
-  );
-}
-Future<int> insertTransaction(TransactionModel transaction) async {
-  final db = await database;
-
-  return await db.insert(
-    'transactions',
-    transaction.toMap(),
-  );
-  
-}
-Future<List<TransactionModel>> getTransactions() async {
-  final db = await database;
-
-  final result = await db.query('transactions');
-
-  return result.map((map) {
-    return TransactionModel.fromMap(map);
-  }).toList();
-}
-Future<int> updateTransaction(
-  TransactionModel transaction,
-) async {
-  final db = await database;
-
-  return await db.update(
-    'transactions',
-    transaction.toMap(),
-    where: 'id = ?',
-    whereArgs: [transaction.id],
+    columns: ['id'],
+    where: 'email = ?',
+    whereArgs: [email],
+    limit: 1,
   );
 
-}
-Future<int> deleteTransaction(int id) async {
-  final db = await database;
-
-  return await db.delete(
-    'transactions',
-    where: 'id = ?',
-    whereArgs: [id],
-  );
-}
-
-Future<int> insertGoal(GoalModel goal) async {
-  final db = await database;
-
-  return await db.insert(
-    'goals',
-    goal.toMap(),
-  );
-}
-
-Future<List<GoalModel>> getGoals() async {
-  final db = await database;
-
-  final result = await db.query('goals');
-
-  return result.map((map) {
-    return GoalModel.fromMap(map);
-  }).toList();
-}
-
-Future<int> updateGoal(GoalModel goal) async {
-  final db = await database;
-
-  return await db.update(
-    'goals',
-    goal.toMap(),
-    where: 'id = ?',
-    whereArgs: [goal.id],
-  );
-}
-
-Future<int> deleteGoal(int id) async {
-  final db = await database;
-
-  return await db.delete(
-    'goals',
-    where: 'id = ?',
-    whereArgs: [id],
-  );
+  return result.isNotEmpty;
 }
 }
