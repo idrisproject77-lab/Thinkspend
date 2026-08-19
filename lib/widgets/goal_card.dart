@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:thinkspend/models/goal_model.dart';
+import 'package:thinkspend/services/privacy_service.dart';
 import 'package:thinkspend/services/theme_service.dart';
 import 'package:thinkspend/utils/currency_formatter.dart';
 
@@ -46,10 +47,14 @@ class GoalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final progress = _calculateProgress();
-    final priorityColor = _getPriorityColor(goal.priority);
-    final textPrimary = AppColors.textPrimary(context);
-    final textSecondary = AppColors.textSecondary(context);
+    return ListenableBuilder(
+      listenable: PrivacyService.instance,
+      builder: (context, _) {
+        final progress = _calculateProgress();
+        final priorityColor = _getPriorityColor(goal.priority);
+        final textPrimary = AppColors.textPrimary(context);
+        final textSecondary = AppColors.textSecondary(context);
+
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -174,6 +179,8 @@ class GoalCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+      },
     );
   }
 }

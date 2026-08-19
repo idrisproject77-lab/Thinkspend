@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:thinkspend/pages/splash_screen.dart';
+import 'package:thinkspend/services/privacy_service.dart';
 import 'package:thinkspend/services/theme_service.dart';
 
 void main() {
@@ -12,7 +13,10 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: ThemeService.instance,
+      listenable: Listenable.merge([
+        ThemeService.instance,
+        PrivacyService.instance,
+      ]),
       builder: (context, _) {
         return MaterialApp(
           debugShowCheckedModeBanner: false,

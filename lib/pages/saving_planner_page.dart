@@ -3,6 +3,8 @@ import 'package:thinkspend/databases/database_helper.dart';
 import 'package:thinkspend/models/goal_model.dart';
 import 'package:thinkspend/models/transaction_model.dart';
 import 'package:thinkspend/models/user_model.dart';
+import 'package:thinkspend/services/theme_service.dart';
+import 'package:thinkspend/utils/currency_formatter.dart';
 
 class SavingPlannerPage extends StatefulWidget {
   final UserModel user;
@@ -67,37 +69,50 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
 
   double get availableMoney {
     final result = totalIncome - totalExpense;
-
     return result > 0 ? result : 0;
   }
 
   // ============================================================
-  // REKOMENDASI TABUNGAN
-  //
-  // Untuk sementara menggunakan 40% dari uang tersedia.
+  // REKOMENDASI TABUNGAN (40% UANG TERSEDIA)
   // ============================================================
 
   double get recommendedSaving {
     if (availableMoney <= 0) {
       return 0;
     }
-
     return availableMoney * 0.40;
   }
 
   // ============================================================
-  // FORMAT RUPIAH
+  // FORMAT TANGGAL FRIENDLY
   // ============================================================
 
-  String formatRupiah(double amount) {
-    final value = amount.round().toString();
+  String formatFriendlyDate(String? dateStr) {
+    if (dateStr == null || dateStr.trim().isEmpty) {
+      return '-';
+    }
 
-    final formatted = value.replaceAllMapped(
-      RegExp(r'\B(?=(\d{3})+(?!\d))'),
-      (match) => '.',
-    );
+    final parsedDate = DateTime.tryParse(dateStr.trim());
+    if (parsedDate == null) {
+      return dateStr;
+    }
 
-    return 'Rp $formatted';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Agu',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des',
+    ];
+
+    return '${parsedDate.day} ${months[parsedDate.month - 1]} ${parsedDate.year}';
   }
 
   // ============================================================
@@ -110,22 +125,31 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
     }
 
     GoalModel? selectedGoal;
+    GoalModel? completedGoal;
 
     for (final goal in goals) {
-      if (goal.targetAmount <= goal.currentAmount) {
+      final isCompleted = goal.targetAmount <= goal.currentAmount;
+
+      // Simpan target yang sudah selesai sebagai fallback.
+      if (isCompleted) {
+        completedGoal ??= goal;
         continue;
       }
 
+      // Pilih target yang belum selesai.
       if (selectedGoal == null) {
         selectedGoal = goal;
         continue;
       }
 
+      // Prioritaskan High.
       if (goal.priority == 'High' && selectedGoal.priority != 'High') {
         selectedGoal = goal;
         continue;
       }
 
+      // Jika sama-sama punya deadline,
+      // pilih deadline yang lebih dekat.
       if (goal.deadline != null && selectedGoal.deadline != null) {
         if (goal.deadline!.compareTo(selectedGoal.deadline!) < 0) {
           selectedGoal = goal;
@@ -133,7 +157,15 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
       }
     }
 
-    return selectedGoal;
+    // Kalau masih ada target yang belum tercapai,
+    // tampilkan target tersebut.
+    if (selectedGoal != null) {
+      return selectedGoal;
+    }
+
+    // Kalau semua target sudah tercapai,
+    // tetap tampilkan target yang selesai.
+    return completedGoal;
   }
 
   // ============================================================
@@ -142,7 +174,6 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
 
   double getRemainingGoal(GoalModel goal) {
     final remaining = goal.targetAmount - goal.currentAmount;
-
     return remaining > 0 ? remaining : 0;
   }
 
@@ -163,24 +194,52 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
 
     final now = DateTime.now();
 
-    if (parsedDate.isBefore(now)) {
+    // Bandingkan tanggal saja, tanpa memperhitungkan jam.
+    final today = DateTime(now.year, now.month, now.day);
+    final deadlineDate = DateTime(
+      parsedDate.year,
+      parsedDate.month,
+      parsedDate.day,
+    );
+
+    // Deadline hari ini masih dianggap valid.
+    if (deadlineDate.isBefore(today)) {
       return 0;
     }
 
     int months =
-        (parsedDate.year - now.year) * 12 + parsedDate.month - now.month;
+        (deadlineDate.year - today.year) * 12 +
+        deadlineDate.month -
+        today.month;
 
-    // Jika masih ada sisa hari di bulan deadline,
-    // kita hitung sebagai satu bulan tambahan.
-    if (parsedDate.day > now.day) {
+    if (deadlineDate.day > today.day) {
       months++;
     }
 
-    if (months <= 0) {
-      return 1;
+    return months <= 0 ? 1 : months;
+  }
+
+  bool isDeadlinePassed(String? deadline) {
+    if (deadline == null || deadline.trim().isEmpty) {
+      return false;
     }
 
-    return months;
+    final parsedDate = DateTime.tryParse(deadline);
+
+    if (parsedDate == null) {
+      return false;
+    }
+
+    final now = DateTime.now();
+
+    final today = DateTime(now.year, now.month, now.day);
+    final deadlineDate = DateTime(
+      parsedDate.year,
+      parsedDate.month,
+      parsedDate.day,
+    );
+
+    return deadlineDate.isBefore(today);
   }
 
   // ============================================================
@@ -194,8 +253,6 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
       return 0;
     }
 
-    // Jika tidak ada deadline,
-    // kebutuhan per bulan tidak dapat dihitung.
     if (goal.deadline == null || goal.deadline!.trim().isEmpty) {
       return 0;
     }
@@ -216,56 +273,61 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
   String getGoalStatus(GoalModel goal) {
     final remaining = getRemainingGoal(goal);
 
-    // Target memang sudah selesai.
     if (remaining <= 0) {
-      return 'Target sudah tercapai';
+      return 'Target Tercapai';
     }
 
-    // Tidak ada deadline.
-    // Selama masih ada kemampuan menabung,
-    // target dianggap realistis tanpa menentukan
-    // waktu pencapaian.
+    if (isDeadlinePassed(goal.deadline)) {
+      return 'Deadline Terlewat';
+    }
+
     if (goal.deadline == null || goal.deadline!.trim().isEmpty) {
       if (recommendedSaving > 0) {
-        return 'Target Realistis';
+        return 'Target Terjangkau';
       }
 
-      return 'Belum dapat dicapai';
+      return 'Perlu Penyesuaian';
     }
 
     final required = calculateRequiredMonthlySaving(goal);
 
     if (recommendedSaving <= 0) {
-      return 'Belum dapat dicapai';
+      return 'Perlu Penyesuaian';
     }
 
     if (recommendedSaving >= required) {
-      return 'Target Realistis';
+      return 'Target Terjangkau';
     }
 
     return 'Perlu Penyesuaian';
   }
 
-  // ============================================================
-  // WARNA STATUS TARGET
-  // ============================================================
-
   Color getGoalStatusColor(GoalModel goal) {
     final status = getGoalStatus(goal);
 
-    if (status == 'Target Realistis') {
-      return Colors.green;
+    if (status == 'Target Terjangkau' || status == 'Target Tercapai') {
+      return AppColors.green;
     }
 
-    if (status == 'Perlu Penyesuaian') {
-      return Colors.orange;
+    if (status == 'Deadline Terlewat') {
+      return AppColors.red;
     }
 
-    if (status == 'Target sudah tercapai') {
-      return Colors.blue;
+    return AppColors.orange;
+  }
+
+  IconData getGoalStatusIcon(GoalModel goal) {
+    final status = getGoalStatus(goal);
+
+    if (status == 'Target Terjangkau' || status == 'Target Tercapai') {
+      return Icons.check_circle_rounded;
     }
 
-    return Colors.red;
+    if (status == 'Deadline Terlewat') {
+      return Icons.event_busy_rounded;
+    }
+
+    return Icons.warning_amber_rounded;
   }
 
   // ============================================================
@@ -274,69 +336,7 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
 
   double calculateSavingDifference(GoalModel goal) {
     final required = calculateRequiredMonthlySaving(goal);
-
-    final difference = recommendedSaving - required;
-
-    return difference;
-  }
-
-  // ============================================================
-  // PESAN REKOMENDASI
-  // ============================================================
-
-  String getGoalRecommendation(GoalModel goal) {
-    final remaining = getRemainingGoal(goal);
-
-    if (remaining <= 0) {
-      return '🎉 Target ini sudah tercapai. '
-          'Kamu bisa mulai merencanakan target berikutnya.';
-    }
-
-    if (recommendedSaving <= 0) {
-      return '⚠️ Saat ini belum ada uang yang '
-          'cukup tersedia untuk dialokasikan '
-          'ke target. Coba evaluasi pengeluaranmu.';
-    }
-
-    // ============================================================
-    // TARGET TANPA DEADLINE
-    // ============================================================
-
-    if (goal.deadline == null || goal.deadline!.trim().isEmpty) {
-      return '🟢 Target ini masih berada dalam '
-          'jangkauan kemampuan keuanganmu. '
-          'Kamu memiliki kemampuan menabung sekitar '
-          '${formatRupiah(recommendedSaving)} '
-          'per bulan untuk mencapai target ini.';
-    }
-
-    // ============================================================
-    // TARGET DENGAN DEADLINE
-    // ============================================================
-
-    final required = calculateRequiredMonthlySaving(goal);
-
-    final difference = recommendedSaving - required;
-
-    if (difference >= 0) {
-      return '🟢 Dengan kemampuan menabung saat ini, '
-          'kamu berpotensi mencapai target tepat waktu. '
-          'Kamu memiliki ruang sekitar '
-          '${formatRupiah(difference)} '
-          'di atas kebutuhan bulanan target.';
-    }
-
-    final shortfall = difference.abs();
-
-    return '⚠️ Target belum sesuai kemampuan.\n\n'
-        'Target membutuhkan '
-        '${formatRupiah(required)} per bulan, '
-        'sedangkan kemampuanmu sekitar '
-        '${formatRupiah(recommendedSaving)} per bulan.\n\n'
-        'Kekurangan: '
-        '${formatRupiah(shortfall)} per bulan.\n\n'
-        '💡 Coba perpanjang deadline atau '
-        'kurangi nominal target.';
+    return recommendedSaving - required;
   }
 
   // ============================================================
@@ -353,7 +353,7 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
     }
 
     if (recommendedSaving > 0) {
-      return 'Cukup Realistis';
+      return 'Kondisi Keuangan Cukup Realistis';
     }
 
     return 'Perlu Penyesuaian';
@@ -361,14 +361,27 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
 
   Color getSavingStatusColor() {
     if (totalIncome <= 0) {
-      return Colors.grey;
+      return AppColors.lightMuted;
     }
 
     if (totalExpense >= totalIncome) {
-      return Colors.red;
+      return AppColors.red;
     }
 
-    return Colors.green;
+    return AppColors.green;
+  }
+
+  Color _getPriorityColor(String? priority) {
+    switch (priority) {
+      case 'High':
+        return AppColors.red;
+      case 'Medium':
+        return AppColors.orange;
+      case 'Low':
+        return AppColors.green;
+      default:
+        return AppColors.lightTextSecondary;
+    }
   }
 
   // ============================================================
@@ -377,431 +390,231 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
 
   @override
   Widget build(BuildContext context) {
+    final surface = AppColors.surface(context);
+    final border = AppColors.border(context);
+    final textPrimary = AppColors.textPrimary(context);
+    final textSecondary = AppColors.textSecondary(context);
+    final background = AppColors.background(context);
+
     if (isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return Scaffold(
+        backgroundColor: background,
+        body: const Center(child: CircularProgressIndicator()),
+      );
     }
 
     final goal = nearestGoal;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Smart Saving Planner')),
-
+      backgroundColor: background,
+      appBar: AppBar(title: const Text('Smart Saving Planner'), elevation: 0),
       body: RefreshIndicator(
         onRefresh: loadData,
-
         child: SingleChildScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-
-          padding: const EdgeInsets.all(24),
-
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
-
             children: [
               // ==================================================
               // HEADER
               // ==================================================
-              const Text(
-                'Rencana Menabung',
-
-                style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
+              Text(
+                'Smart Saving Planner',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: textPrimary,
+                ),
               ),
-
-              const SizedBox(height: 8),
-
-              const Text(
-                'ThinkSpend membantu memperkirakan '
-                'kemampuan menabung dan memberikan '
-                'rekomendasi berdasarkan kondisi '
-                'keuanganmu.',
-                style: TextStyle(color: Colors.grey, height: 1.5),
+              const SizedBox(height: 6),
+              Text(
+                'Rencanakan target tabunganmu dengan lebih realistis.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: textSecondary,
+                  height: 1.4,
+                ),
               ),
-
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
 
               // ==================================================
               // RINGKASAN KEUANGAN
               // ==================================================
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-
-                    children: [
-                      const Text(
-                        'Ringkasan Keuangan',
-
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: border, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundColor: AppColors.primaryBlue.withValues(
+                            alpha: 0.12,
+                          ),
+                          child: const Icon(
+                            Icons.account_balance_wallet_outlined,
+                            size: 18,
+                            color: AppColors.primaryBlue,
+                          ),
                         ),
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      _summaryRow(
-                        'Pemasukan',
-                        formatRupiah(totalIncome),
-                        Colors.green,
-                      ),
-
-                      const SizedBox(height: 12),
-
-                      _summaryRow(
-                        'Pengeluaran',
-                        formatRupiah(totalExpense),
-                        Colors.red,
-                      ),
-
-                      const Divider(height: 28),
-
-                      _summaryRow(
-                        'Uang Tersedia',
-                        formatRupiah(availableMoney),
-                        Theme.of(context).colorScheme.primary,
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Ringkasan Keuangan',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _summaryRow(
+                      context,
+                      'Pemasukan',
+                      formatRupiah(totalIncome),
+                      AppColors.green,
+                    ),
+                    const SizedBox(height: 10),
+                    _summaryRow(
+                      context,
+                      'Pengeluaran',
+                      formatRupiah(totalExpense),
+                      AppColors.red,
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Divider(height: 1, color: border),
+                    ),
+                    _summaryRow(
+                      context,
+                      'Uang Tersedia',
+                      formatRupiah(availableMoney),
+                      AppColors.primaryBlue,
+                      isBold: true,
+                    ),
+                  ],
                 ),
               ),
-
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
               // ==================================================
-              // SARAN MENABUNG
+              // KEMAMPUAN MENABUNG
               // ==================================================
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-
-                    children: [
-                      Row(
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: border, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundColor: AppColors.green.withValues(
+                            alpha: 0.12,
+                          ),
+                          child: const Icon(
+                            Icons.savings_outlined,
+                            size: 18,
+                            color: AppColors.green,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Rekomendasi Menabung',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Center(
+                      child: Column(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-
-                            decoration: BoxDecoration(
-                              color: Colors.green.withValues(alpha: 0.12),
-
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-
-                            child: const Icon(
-                              Icons.savings_outlined,
-                              color: Colors.green,
+                          Text(
+                            formatRupiah(recommendedSaving),
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.green,
                             ),
                           ),
-
-                          const SizedBox(width: 12),
-
-                          const Expanded(
+                          const SizedBox(height: 4),
+                          Text(
+                            'Rekomendasi menabung per bulan',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: getSavingStatusColor().withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: getSavingStatusColor().withValues(alpha: 0.20),
+                          width: 1,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline_rounded,
+                            size: 16,
+                            color: getSavingStatusColor(),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
                             child: Text(
-                              'Kemampuan Menabung',
-
+                              getSavingStatus(),
                               style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: getSavingStatusColor(),
                               ),
                             ),
                           ),
                         ],
                       ),
-
-                      const SizedBox(height: 20),
-
-                      Center(
-                        child: Text(
-                          formatRupiah(recommendedSaving),
-
-                          style: const TextStyle(
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      const Center(
-                        child: Text(
-                          'perkiraan kemampuan menabung per bulan',
-
-                          style: TextStyle(color: Colors.grey),
-                        ),
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      Container(
-                        width: double.infinity,
-
-                        padding: const EdgeInsets.all(16),
-
-                        decoration: BoxDecoration(
-                          color: getSavingStatusColor().withValues(alpha: 0.10),
-
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.check_circle_outline,
-
-                              color: getSavingStatusColor(),
-                            ),
-
-                            const SizedBox(width: 10),
-
-                            Expanded(
-                              child: Text(
-                                getSavingStatus(),
-
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-
-                                  color: getSavingStatusColor(),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
-
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
 
               // ==================================================
               // TARGET PRIORITAS
               // ==================================================
               if (goal != null)
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-
-                      children: [
-                        Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-
-                              decoration: BoxDecoration(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.primaryContainer,
-
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-
-                              child: Icon(
-                                Icons.flag_outlined,
-
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onPrimaryContainer,
-                              ),
-                            ),
-
-                            const SizedBox(width: 12),
-
-                            const Expanded(
-                              child: Text(
-                                'Target Prioritas',
-
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        Text(
-                          goal.name,
-
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        Text(
-                          '${formatRupiah(goal.currentAmount)}'
-                          ' / '
-                          '${formatRupiah(goal.targetAmount)}',
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        LinearProgressIndicator(
-                          value: goal.targetAmount > 0
-                              ? (goal.currentAmount / goal.targetAmount).clamp(
-                                  0.0,
-                                  1.0,
-                                )
-                              : 0,
-
-                          minHeight: 10,
-                        ),
-
-                        const SizedBox(height: 8),
-
-                        Text(
-                          '${((goal.currentAmount / goal.targetAmount) * 100).clamp(0, 100).toStringAsFixed(1)}%',
-
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-
-                        const SizedBox(height: 16),
-
-                        _summaryRow(
-                          'Sisa target',
-                          formatRupiah(getRemainingGoal(goal)),
-                          Colors.orange,
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        if (goal.deadline != null &&
-                            goal.deadline!.trim().isNotEmpty) ...[
-                          _summaryRow(
-                            'Kebutuhan / bulan',
-                            formatRupiah(calculateRequiredMonthlySaving(goal)),
-                            Colors.blue,
-                          ),
-
-                          const SizedBox(height: 12),
-                        ],
-
-                        _summaryRow(
-                          'Kemampuan saat ini',
-                          formatRupiah(recommendedSaving),
-                          Colors.green,
-                        ),
-
-                        if (goal.deadline != null) ...[
-                          const SizedBox(height: 12),
-
-                          _summaryRow('Deadline', goal.deadline!, Colors.grey),
-                        ],
-
-                        const SizedBox(height: 20),
-
-                        // STATUS TARGET
-                        Container(
-                          width: double.infinity,
-
-                          padding: const EdgeInsets.all(16),
-
-                          decoration: BoxDecoration(
-                            color: getGoalStatusColor(
-                              goal,
-                            ).withValues(alpha: 0.10),
-
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-
-                            children: [
-                              Icon(
-                                getGoalStatus(goal) == 'Target Realistis'
-                                    ? Icons.check_circle_outline
-                                    : Icons.warning_amber_rounded,
-
-                                color: getGoalStatusColor(goal),
-                              ),
-
-                              const SizedBox(width: 10),
-
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-
-                                  children: [
-                                    Text(
-                                      getGoalStatus(goal),
-
-                                      style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-
-                                        color: getGoalStatusColor(goal),
-                                      ),
-                                    ),
-
-                                    const SizedBox(height: 8),
-
-                                    Text(
-                                      getGoalRecommendation(goal),
-
-                                      style: const TextStyle(height: 1.5),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
+                _buildPriorityGoalCard(context, goal)
               else
-                Card(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-
-                    child: Column(
-                      children: [
-                        const Icon(
-                          Icons.flag_outlined,
-
-                          size: 40,
-
-                          color: Colors.grey,
-                        ),
-
-                        const SizedBox(height: 12),
-
-                        const Text(
-                          'Belum ada target tabungan.',
-
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-
-                        const SizedBox(height: 6),
-
-                        const Text(
-                          'Buat target tabungan agar '
-                          'ThinkSpend dapat menghitung '
-                          'kebutuhan tabunganmu.',
-
-                          textAlign: TextAlign.center,
-
-                          style: TextStyle(color: Colors.grey, height: 1.5),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
+                _buildEmptyGoalCard(context),
             ],
           ),
         ),
@@ -810,24 +623,472 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
   }
 
   // ============================================================
+  // TARGET PRIORITAS CARD
+  // ============================================================
+
+  Widget _buildPriorityGoalCard(BuildContext context, GoalModel goal) {
+    final surface = AppColors.surface(context);
+    final border = AppColors.border(context);
+    final textPrimary = AppColors.textPrimary(context);
+    final textSecondary = AppColors.textSecondary(context);
+    final subtleBg = AppColors.subtleBg(context);
+
+    final remaining = getRemainingGoal(goal);
+    final hasDeadline =
+        goal.deadline != null && goal.deadline!.trim().isNotEmpty;
+    final required = hasDeadline ? calculateRequiredMonthlySaving(goal) : 0.0;
+    final progress = goal.targetAmount > 0
+        ? (goal.currentAmount / goal.targetAmount).clamp(0.0, 1.0)
+        : 0.0;
+    final progressPercentage = goal.targetAmount > 0
+        ? (goal.currentAmount / goal.targetAmount) * 100
+        : 0.0;
+
+    final priorityColor = _getPriorityColor(goal.priority);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border, width: 1),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header Card: Icon + Title + Priority Tag
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  CircleAvatar(
+                    radius: 16,
+                    backgroundColor: AppColors.primaryBlue.withValues(
+                      alpha: 0.12,
+                    ),
+                    child: const Icon(
+                      Icons.flag_outlined,
+                      size: 18,
+                      color: AppColors.primaryBlue,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Text(
+                    'Target Prioritas',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: textPrimary,
+                    ),
+                  ),
+                ],
+              ),
+              if (goal.priority != null && goal.priority!.isNotEmpty)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: priorityColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    goal.priority!,
+                    style: TextStyle(
+                      color: priorityColor,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 11,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // 1. Nama Target
+          Text(
+            goal.name,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: textPrimary,
+            ),
+          ),
+          const SizedBox(height: 10),
+
+          // 2. Progress
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                formatRupiah(goal.currentAmount),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: textPrimary,
+                ),
+              ),
+              Text(
+                'dari ${formatRupiah(goal.targetAmount)}',
+                style: TextStyle(fontSize: 12, color: textSecondary),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              value: progress,
+              minHeight: 8,
+              backgroundColor: subtleBg,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                progress >= 1.0 ? AppColors.green : AppColors.primaryBlue,
+              ),
+            ),
+          ),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Text(
+              '${progressPercentage.clamp(0, 100).toStringAsFixed(1)}%',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: textPrimary,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+
+          // 3. Sisa Target
+          _summaryRow(
+            context,
+            'Sisa target',
+            formatRupiah(remaining),
+            AppColors.orange,
+          ),
+          const SizedBox(height: 10),
+
+          // 4. Perlu ditabung / bulan
+          if (hasDeadline) ...[
+            _summaryRow(
+              context,
+              'Perlu ditabung / bulan',
+              formatRupiah(required),
+              AppColors.primaryBlue,
+            ),
+            const SizedBox(height: 10),
+          ],
+
+          // 5. Estimasi Kemampuan
+          _summaryRow(
+            context,
+            'Estimasi kemampuan',
+            formatRupiah(recommendedSaving),
+            AppColors.green,
+          ),
+          const SizedBox(height: 10),
+
+          // 6. Deadline
+          _summaryRow(
+            context,
+            'Deadline',
+            formatFriendlyDate(goal.deadline),
+            textPrimary,
+          ),
+          const SizedBox(height: 16),
+
+          // 7. Status & Rekomendasi Assistant Card
+          _buildGoalStatusCard(context, goal, remaining, hasDeadline, required),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // STATUS & REKOMENDASI CARD (COMPACT FINANCIAL ASSISTANT)
+  // ============================================================
+
+  Widget _buildGoalStatusCard(
+    BuildContext context,
+    GoalModel goal,
+    double remaining,
+    bool hasDeadline,
+    double required,
+  ) {
+    final status = getGoalStatus(goal);
+    final statusColor = getGoalStatusColor(goal);
+    final statusIcon = getGoalStatusIcon(goal);
+    final textPrimary = AppColors.textPrimary(context);
+    final textSecondary = AppColors.textSecondary(context);
+
+    // Is Completed
+    if (remaining <= 0) {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: statusColor.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: statusColor.withValues(alpha: 0.22),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(statusIcon, color: statusColor, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  status,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: statusColor,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Selamat! Target ini sudah berhasil kamu capai.',
+              style: TextStyle(fontSize: 13, color: textPrimary, height: 1.4),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Is Realistic / Terjangkau
+    if (status == 'Target Terjangkau') {
+      return Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: statusColor.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: statusColor.withValues(alpha: 0.22),
+            width: 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(statusIcon, color: statusColor, size: 20),
+                const SizedBox(width: 8),
+                Text(
+                  status,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: statusColor,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              hasDeadline
+                  ? 'Dengan rekomendasi menabungmu saat ini, target ini masih realistis untuk dicapai sebelum deadline.'
+                  : 'Dengan rekomendasi menabungmu saat ini, target ini masih realistis untuk dicapai secara bertahap.',
+              style: TextStyle(fontSize: 13, color: textPrimary, height: 1.4),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Needs Adjustment / Perlu Penyesuaian
+    final shortfall = (required - recommendedSaving) > 0
+        ? (required - recommendedSaving)
+        : 0.0;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: statusColor.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: statusColor.withValues(alpha: 0.22),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(statusIcon, color: statusColor, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                status,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: statusColor,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (hasDeadline && required > 0) ...[
+            Text(
+              'Target ini membutuhkan sekitar ${formatRupiah(required)}/bulan, sementara rekomendasi menabungmu sekitar ${formatRupiah(recommendedSaving)}/bulan.',
+              style: TextStyle(fontSize: 13, color: textPrimary, height: 1.4),
+            ),
+            if (shortfall > 0) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: AppColors.surface(context),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: AppColors.border(context),
+                    width: 1,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Selisih kebutuhan',
+                      style: TextStyle(fontSize: 12, color: textSecondary),
+                    ),
+                    Text(
+                      '${formatRupiah(shortfall)}/bulan',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.orange,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 8),
+            Text(
+              'Agar target lebih realistis, kamu bisa memperpanjang deadline atau menyesuaikan nominal target.',
+              style: TextStyle(
+                fontSize: 12,
+                color: textSecondary,
+                height: 1.35,
+              ),
+            ),
+          ] else ...[
+            Text(
+              'Saat ini belum ada rekomendasi menabung yang cukup untuk dialokasikan ke target ini.',
+              style: TextStyle(fontSize: 13, color: textPrimary, height: 1.4),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Agar target lebih realistis, kamu bisa mengevaluasi pos pengeluaran harian atau menyesuaikan nominal target.',
+              style: TextStyle(
+                fontSize: 12,
+                color: textSecondary,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // EMPTY STATE GOAL CARD
+  // ============================================================
+
+  Widget _buildEmptyGoalCard(BuildContext context) {
+    final surface = AppColors.surface(context);
+    final border = AppColors.border(context);
+    final textPrimary = AppColors.textPrimary(context);
+    final textSecondary = AppColors.textSecondary(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border, width: 1),
+      ),
+      child: Column(
+        children: [
+          CircleAvatar(
+            radius: 24,
+            backgroundColor: AppColors.lightMuted.withValues(alpha: 0.15),
+            child: const Icon(
+              Icons.flag_outlined,
+              size: 24,
+              color: AppColors.lightMuted,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Belum ada target tabungan',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: textPrimary,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Buat target tabungan terlebih dahulu agar ThinkSpend dapat memperkirakan kebutuhan dan rencana menabungmu.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 13, color: textSecondary, height: 1.4),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
   // SUMMARY ROW
   // ============================================================
 
-  Widget _summaryRow(String title, String value, Color color) {
+  Widget _summaryRow(
+    BuildContext context,
+    String title,
+    String value,
+    Color valueColor, {
+    bool isBold = false,
+  }) {
+    final textSecondary = AppColors.textSecondary(context);
+
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
       children: [
         Expanded(
-          child: Text(title, style: const TextStyle(color: Colors.grey)),
+          child: Text(
+            title,
+            style: TextStyle(fontSize: 13, color: textSecondary),
+          ),
         ),
-
         const SizedBox(width: 12),
-
         Text(
           value,
-
-          style: TextStyle(fontWeight: FontWeight.bold, color: color),
+          style: TextStyle(
+            fontSize: isBold ? 14 : 13,
+            fontWeight: isBold ? FontWeight.bold : FontWeight.w600,
+            color: valueColor,
+          ),
         ),
       ],
     );

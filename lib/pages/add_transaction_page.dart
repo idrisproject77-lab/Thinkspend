@@ -135,7 +135,7 @@ class _AddTransactionPageState extends State<AddTransactionPage>
                 )
               else
                 Lottie.asset(
-                  'assets/animations/thinking.json',
+                  'assets/animations/ROBOT-THINK.json',
                   height: 80,
                   width: 80,
                   repeat: true,

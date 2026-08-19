@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:thinkspend/models/user_model.dart';
+import 'package:thinkspend/services/privacy_service.dart';
 import 'package:thinkspend/services/theme_service.dart';
 import 'package:thinkspend/views/edit_profile_page.dart';
 import 'package:thinkspend/views/change_password_page.dart';
@@ -235,18 +236,52 @@ class ProfilePage extends StatelessWidget {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: border),
               ),
-              child: ListTile(
-                leading: Icon(Icons.brightness_6_outlined, size: 20, color: textSecondary),
-                title: Text(
-                  'Tema Aplikasi',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary),
-                ),
-                subtitle: Text(
-                  ThemeService.instance.themeModeName,
-                  style: TextStyle(fontSize: 12, color: textSecondary),
-                ),
-                trailing: Icon(Icons.chevron_right, size: 20, color: textSecondary),
-                onTap: () => _showThemeDialog(context),
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: Icon(Icons.brightness_6_outlined, size: 20, color: textSecondary),
+                    title: Text(
+                      'Tema Aplikasi',
+                      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: textPrimary),
+                    ),
+                    subtitle: Text(
+                      ThemeService.instance.themeModeName,
+                      style: TextStyle(fontSize: 12, color: textSecondary),
+                    ),
+                    trailing: Icon(Icons.chevron_right, size: 20, color: textSecondary),
+                    onTap: () => _showThemeDialog(context),
+                  ),
+                  Divider(height: 1, color: border),
+                  ListTile(
+                    leading: Icon(
+                      PrivacyService.instance.isAmountVisible
+                          ? Icons.visibility_outlined
+                          : Icons.visibility_off_outlined,
+                      size: 20,
+                      color: textSecondary,
+                    ),
+                    title: Text(
+                      'Privasi Nominal',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                        color: textPrimary,
+                      ),
+                    ),
+                    subtitle: Text(
+                      PrivacyService.instance.isAmountVisible
+                          ? 'Nominal ditampilkan'
+                          : 'Nominal disembunyikan',
+                      style: TextStyle(fontSize: 12, color: textSecondary),
+                    ),
+                    trailing: Switch(
+                      value: PrivacyService.instance.isAmountVisible,
+                      onChanged: (_) =>
+                          PrivacyService.instance.toggleVisibility(),
+                    ),
+                    onTap: () => PrivacyService.instance.toggleVisibility(),
+                  ),
+                ],
               ),
             ),
 

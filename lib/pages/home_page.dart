@@ -11,6 +11,7 @@ import 'financial_health_page.dart';
 import 'saving_planner_page.dart';
 import 'package:thinkspend/views/profile_page.dart';
 import 'package:thinkspend/services/theme_service.dart';
+import 'package:thinkspend/services/privacy_service.dart';
 
 class HomePage extends StatefulWidget {
   final UserModel user;
@@ -399,7 +400,7 @@ class _HomePageState extends State<HomePage> {
     }
 
     final balanceBeforeExpense =
-        currentUser.income + totalIncome - totalExpense;
+        totalIncome - totalExpense;
 
     if (balanceBeforeExpense <= 0) {
       return null;
@@ -471,7 +472,7 @@ class _HomePageState extends State<HomePage> {
     const incomeGreen = AppColors.green;
     const expenseRed = AppColors.red;
 
-    final balance = currentUser.income + totalIncome - totalExpense;
+    final balance = totalIncome - totalExpense;
 
     final isNegativeBalance = balance < 0;
 
@@ -588,23 +589,53 @@ class _HomePageState extends State<HomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Total Saldo',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: textSecondary,
-                        fontWeight: FontWeight.w500,
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Total Saldo',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: textSecondary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () {
+                            PrivacyService.instance.toggleVisibility();
+                          },
+                          icon: Icon(
+                            PrivacyService.instance.isAmountVisible
+                                ? Icons.visibility_rounded
+                                : Icons.visibility_off_rounded,
+                            size: 20,
+                            color: textSecondary,
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          tooltip: PrivacyService.instance.isAmountVisible
+                              ? 'Sembunyikan Nominal'
+                              : 'Tampilkan Nominal',
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 6),
-                    Text(
-                      formatRupiah(balance),
-                      style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: isNegativeBalance
-                            ? expenseRed
-                            : textPrimary,
+                    AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 200),
+                      transitionBuilder: (child, animation) =>
+                          FadeTransition(opacity: animation, child: child),
+                      child: Text(
+                        formatRupiah(balance),
+                        key: ValueKey<bool>(
+                          PrivacyService.instance.isAmountVisible,
+                        ),
+                        style: TextStyle(
+                          fontSize: 28,
+                          fontWeight: FontWeight.bold,
+                          color: isNegativeBalance
+                              ? expenseRed
+                              : textPrimary,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
