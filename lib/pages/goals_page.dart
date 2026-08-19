@@ -3,6 +3,7 @@ import 'package:thinkspend/databases/database_helper.dart';
 import 'package:thinkspend/models/goal_model.dart';
 import 'package:thinkspend/models/user_model.dart';
 import 'package:thinkspend/widgets/goal_card.dart';
+import 'package:thinkspend/services/theme_service.dart';
 
 import 'add_goal_page.dart';
 import 'goal_detail_page.dart';
@@ -77,13 +78,13 @@ class _GoalsPageState extends State<GoalsPage> {
                     const Icon(
                       Icons.error_outline,
                       size: 48,
-                      color: Colors.red,
+                      color: Color(0xFFDC2626),
                     ),
                     const SizedBox(height: 12),
                     Text(
                       'Terjadi kesalahan saat memuat data target:\n${snapshot.error}',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.red),
+                      style: const TextStyle(color: Color(0xFFDC2626)),
                     ),
                     const SizedBox(height: 16),
                     ElevatedButton.icon(
@@ -110,12 +111,33 @@ class _GoalsPageState extends State<GoalsPage> {
                     constraints: BoxConstraints(
                       minHeight: constraints.maxHeight,
                     ),
-                    child: const Center(
-                      child: Text(
-                        'Belum ada target tabungan.',
-                        style: TextStyle(
-                          color: Colors.grey,
-                        ),
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.flag_outlined,
+                            size: 52,
+                            color: AppColors.muted(context),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Belum ada target tabungan.',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: AppColors.textPrimary(context),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Tambahkan target pertamamu untuk mulai menabung.',
+                            style: TextStyle(
+                              color: AppColors.textSecondary(context),
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
@@ -128,7 +150,7 @@ class _GoalsPageState extends State<GoalsPage> {
           return RefreshIndicator(
             onRefresh: _refreshGoals,
             child: ListView.builder(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
               itemCount: goals.length,
               itemBuilder: (context, index) {
                 final goal = goals[index];
@@ -157,6 +179,10 @@ class _GoalsPageState extends State<GoalsPage> {
       ),
 
       floatingActionButton: FloatingActionButton(
+        elevation: 2,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
         onPressed: () async {
           final result = await Navigator.push(
             context,

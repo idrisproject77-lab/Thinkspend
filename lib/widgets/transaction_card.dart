@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:thinkspend/models/transaction_model.dart';
+import 'package:thinkspend/services/theme_service.dart';
 import 'package:thinkspend/utils/currency_formatter.dart';
 
 class TransactionCard extends StatelessWidget {
@@ -22,32 +23,51 @@ class TransactionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isIncome = transaction.type == 'income';
+    final accentColor = isIncome ? AppColors.green : AppColors.red;
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      decoration: BoxDecoration(
+        color: AppColors.surface(context),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.border(context), width: 1),
+      ),
       child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         onTap: onTap,
         leading: CircleAvatar(
-          backgroundColor: isIncome
-              ? Colors.green.withValues(alpha: 0.15)
-              : Colors.red.withValues(alpha: 0.15),
+          radius: 20,
+          backgroundColor: accentColor.withValues(alpha: 0.12),
           child: Icon(
             isIncome ? Icons.arrow_downward : Icons.arrow_upward,
-            color: isIncome ? Colors.green : Colors.red,
+            size: 18,
+            color: accentColor,
           ),
         ),
         title: Text(
           transaction.title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 15,
+            color: AppColors.textPrimary(context),
+          ),
         ),
-        subtitle: Text(
-          '${transaction.category} • ${_formatDate(transaction.date)}',
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            '${transaction.category} • ${_formatDate(transaction.date)}',
+            style: TextStyle(
+              fontSize: 12,
+              color: AppColors.textSecondary(context),
+            ),
+          ),
         ),
         trailing: Text(
           '${isIncome ? '+' : '-'} ${formatRupiah(transaction.amount)}',
           style: TextStyle(
+            fontSize: 14,
             fontWeight: FontWeight.bold,
-            color: isIncome ? Colors.green : Colors.red,
+            color: accentColor,
           ),
         ),
       ),

@@ -14,10 +14,12 @@ class AddTransactionPage extends StatefulWidget {
   State<AddTransactionPage> createState() => _AddTransactionPageState();
 }
 
-class _AddTransactionPageState extends State<AddTransactionPage> {
+class _AddTransactionPageState extends State<AddTransactionPage>
+    with SingleTickerProviderStateMixin {
   final titleController = TextEditingController();
   final amountController = TextEditingController();
   final notesController = TextEditingController();
+  late final AnimationController _warningController;
 
   String selectedCategory = 'Food';
   String selectedType = 'expense';
@@ -33,10 +35,36 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+
+    _warningController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+      lowerBound: 0.85,
+      upperBound: 1.0,
+    );
+  }
+
+  // FORMAT NOMINAL KE RUPIAH
+  String formatRupiah(double value) {
+    final isNegative = value < 0;
+    final absoluteValue = value.abs().round().toString();
+
+    final formatted = absoluteValue.replaceAllMapped(
+      RegExp(r'\B(?=(\d{3})+(?!\d))'),
+      (match) => '.',
+    );
+
+    return '${isNegative ? '-Rp ' : 'Rp '}$formatted';
+  }
+
+  @override
   void dispose() {
     titleController.dispose();
     amountController.dispose();
     notesController.dispose();
+    _warningController.dispose();
     super.dispose();
   }
 
@@ -66,28 +94,21 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
   // ============================================================
   // THINK BEFORE YOU SPEND
   // ============================================================
-
   Future<bool> showThinkBeforeYouSpend(
     double amount,
     double currentBalance,
   ) async {
     final remainingBalance = currentBalance - amount;
+
     final percentage = currentBalance > 0
         ? (amount / currentBalance) * 100
         : 100.0;
 
     final bool isNegative = remainingBalance < 0;
 
-    final String message = isNegative
-        ? 'Pengeluaran ini akan membuat saldo kamu menjadi negatif.\n\n'
-              'Saldo saat ini: Rp ${currentBalance.toStringAsFixed(0)}\n'
-              'Pengeluaran: Rp ${amount.toStringAsFixed(0)}\n'
-              'Perkiraan saldo: Rp ${remainingBalance.toStringAsFixed(0)}'
-        : 'Pengeluaran ini cukup besar dibandingkan saldo kamu.\n\n'
-              'Saldo saat ini: Rp ${currentBalance.toStringAsFixed(0)}\n'
-              'Pengeluaran: Rp ${amount.toStringAsFixed(0)}\n'
-              'Perkiraan saldo: Rp ${remainingBalance.toStringAsFixed(0)}\n\n'
-              'Transaksi ini menggunakan sekitar ${percentage.toStringAsFixed(0)}% dari saldo kamu.';
+    if (isNegative) {
+      _warningController.repeat(reverse: true);
+    }
 
     final result = await showDialog<bool>(
       context: context,
@@ -97,20 +118,31 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
           contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 0),
           title: Column(
             children: [
-              if (!isNegative)
+              if (isNegative)
+                AnimatedBuilder(
+                  animation: _warningController,
+                  builder: (context, child) {
+                    return Transform.scale(
+                      scale: _warningController.value,
+                      child: child,
+                    );
+                  },
+                  child: const Icon(
+                    Icons.warning_amber_rounded,
+                    color: Colors.orange,
+                    size: 64,
+                  ),
+                )
+              else
                 Lottie.asset(
                   'assets/animations/thinking.json',
                   height: 80,
                   width: 80,
                   repeat: true,
-                )
-              else
-                const Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.orange,
-                  size: 64,
                 ),
+
               const SizedBox(height: 8),
+
               const Text(
                 'Think Before You Spend',
                 textAlign: TextAlign.center,
@@ -118,16 +150,96 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
               ),
             ],
           ),
-          content: Text(
-            message,
-            textAlign: TextAlign.left,
-            style: const TextStyle(fontSize: 15, height: 1.45),
+
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                isNegative
+                    ? 'Pengeluaran ini akan membuat saldo kamu menjadi negatif.'
+                    : 'Pengeluaran ini cukup besar dibandingkan saldo kamu.',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                  height: 1.45,
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              Text(
+                'Saldo saat ini',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              ),
+
+              const SizedBox(height: 2),
+
+              Text(
+                formatRupiah(currentBalance),
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              Text(
+                'Pengeluaran',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              ),
+
+              const SizedBox(height: 2),
+
+              Text(
+                formatRupiah(amount),
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+
+              const SizedBox(height: 12),
+
+              Text(
+                'Perkiraan saldo',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+              ),
+
+              const SizedBox(height: 2),
+
+              Text(
+                formatRupiah(remainingBalance),
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.bold,
+                  color: isNegative ? Colors.red : null,
+                ),
+              ),
+
+              if (!isNegative) ...[
+                const SizedBox(height: 16),
+
+                Text(
+                  'Transaksi ini menggunakan sekitar '
+                  '${percentage.toStringAsFixed(0)}% dari saldo kamu.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.grey.shade600,
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ],
           ),
+
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(context, false),
               child: const Text('Batal'),
             ),
+
             ElevatedButton(
               onPressed: () => Navigator.pop(context, true),
               child: const Text('Tetap Simpan'),
@@ -136,6 +248,11 @@ class _AddTransactionPageState extends State<AddTransactionPage> {
         );
       },
     );
+
+    if (isNegative) {
+      _warningController.stop();
+      _warningController.reset();
+    }
 
     return result ?? false;
   }

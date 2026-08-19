@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:thinkspend/models/goal_model.dart';
+import 'package:thinkspend/services/theme_service.dart';
 import 'package:thinkspend/utils/currency_formatter.dart';
 
 class GoalCard extends StatelessWidget {
@@ -33,13 +34,13 @@ class GoalCard extends StatelessWidget {
   Color _getPriorityColor(String? priority) {
     switch (priority) {
       case 'High':
-        return Colors.red;
+        return AppColors.red;
       case 'Medium':
-        return Colors.orange;
+        return AppColors.orange;
       case 'Low':
-        return Colors.green;
+        return AppColors.green;
       default:
-        return Colors.grey;
+        return AppColors.lightTextSecondary;
     }
   }
 
@@ -47,11 +48,18 @@ class GoalCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final progress = _calculateProgress();
     final priorityColor = _getPriorityColor(goal.priority);
+    final textPrimary = AppColors.textPrimary(context);
+    final textSecondary = AppColors.textSecondary(context);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 16),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppColors.surface(context),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border(context), width: 1),
+      ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(16),
@@ -62,13 +70,15 @@ class GoalCard extends StatelessWidget {
               // NAMA + PRIORITAS
               // =========================
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Expanded(
                     child: Text(
                       goal.name,
-                      style: const TextStyle(
-                        fontSize: 20,
+                      style: TextStyle(
+                        fontSize: 17,
                         fontWeight: FontWeight.bold,
+                        color: textPrimary,
                       ),
                     ),
                   ),
@@ -76,27 +86,25 @@ class GoalCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 10,
-                        vertical: 5,
+                        vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: priorityColor.withValues(
-                          alpha: 0.12,
-                        ),
-                        borderRadius: BorderRadius.circular(20),
+                        color: priorityColor.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
                         goal.priority!,
                         style: TextStyle(
                           color: priorityColor,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          fontSize: 11,
                         ),
                       ),
                     ),
                 ],
               ),
 
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
 
               // =========================
               // NOMINAL
@@ -106,15 +114,17 @@ class GoalCard extends StatelessWidget {
                 children: [
                   Text(
                     formatRupiah(goal.currentAmount),
-                    style: const TextStyle(
-                      fontSize: 16,
+                    style: TextStyle(
+                      fontSize: 15,
                       fontWeight: FontWeight.bold,
+                      color: textPrimary,
                     ),
                   ),
                   Text(
                     'dari ${formatRupiah(goal.targetAmount)}',
-                    style: const TextStyle(
-                      color: Colors.grey,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: textSecondary,
                     ),
                   ),
                 ],
@@ -123,32 +133,38 @@ class GoalCard extends StatelessWidget {
               const SizedBox(height: 10),
 
               // =========================
-              // PROGRESS
+              // PROGRESS BAR
               // =========================
               ClipRRect(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(8),
                 child: LinearProgressIndicator(
                   value: progress,
-                  minHeight: 10,
+                  minHeight: 8,
+                  backgroundColor: AppColors.subtleBg(context),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    progress >= 1.0 ? AppColors.green : AppColors.primaryBlue,
+                  ),
                 ),
               ),
 
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
 
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     '${(progress * 100).toStringAsFixed(1)}%',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.bold,
+                      fontSize: 13,
+                      color: textPrimary,
                     ),
                   ),
                   if (goal.deadline != null)
                     Text(
                       'Deadline: ${goal.deadline}',
-                      style: const TextStyle(
-                        color: Colors.grey,
+                      style: TextStyle(
+                        color: textSecondary,
                         fontSize: 12,
                       ),
                     ),

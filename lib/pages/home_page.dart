@@ -10,6 +10,7 @@ import 'package:thinkspend/widgets/transaction_card.dart';
 import 'financial_health_page.dart';
 import 'saving_planner_page.dart';
 import 'package:thinkspend/views/profile_page.dart';
+import 'package:thinkspend/services/theme_service.dart';
 
 class HomePage extends StatefulWidget {
   final UserModel user;
@@ -461,6 +462,15 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    final surface = AppColors.surface(context);
+    final border = AppColors.border(context);
+    final textPrimary = AppColors.textPrimary(context);
+    final textSecondary = AppColors.textSecondary(context);
+    final mutedText = AppColors.muted(context);
+    const primaryBlue = AppColors.primaryBlue;
+    const incomeGreen = AppColors.green;
+    const expenseRed = AppColors.red;
+
     final balance = currentUser.income + totalIncome - totalExpense;
 
     final isNegativeBalance = balance < 0;
@@ -484,221 +494,77 @@ class _HomePageState extends State<HomePage> {
     final healthDescription = getHealthDescription(healthScore);
 
     return Scaffold(
-      body: RefreshIndicator(
-        onRefresh: loadTransactions,
-
-        child: SingleChildScrollView(
-          physics: const AlwaysScrollableScrollPhysics(),
-
-          padding: const EdgeInsets.all(24),
-
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: loadTransactions,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 100),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // ==================================================
-              // PROFILE HEADER
-              // ==================================================
-              InkWell(
-                borderRadius: BorderRadius.circular(18),
-
-                onTap: () async {
-                  final result = await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          ProfilePage(user: currentUser, onLogout: widget.onLogout),
-                    ),
-                  );
-
-                  if (result is UserModel && mounted) {
-                    setState(() {
-                      currentUser = result;
-                    });
-                  }
-                },
-
-                child: Container(
-                  width: double.infinity,
-
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 16,
-                  ),
-
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-
-                    borderRadius: BorderRadius.circular(18),
-
-                    border: Border.all(color: Colors.grey.shade200, width: 1),
-
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.04),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-
-                  child: Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 30,
-
-                        child: Text(
-                          currentUser.name.isNotEmpty
-                              ? currentUser.name[0].toUpperCase()
-                              : '?',
-
-                          style: const TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(width: 16),
-
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-
-                          children: [
-                            Text(
-                              'Halo, ${currentUser.name} 👋',
-
-                              style: const TextStyle(
-                                fontSize: 24,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-
-                            const SizedBox(height: 4),
-
-                            Text(
-                              currentUser.email,
-
-                              style: TextStyle(
-                                fontSize: 15,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      Icon(
-                        Icons.chevron_right,
-                        size: 30,
-                        color: Colors.grey.shade500,
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 24),
-
-              // ==================================================
-              // SALDO
-              // ==================================================
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-
-                    children: [
-                      const Text(
-                        'Saldo',
-
-                        style: TextStyle(fontSize: 16, color: Colors.grey),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      Text(
-                        formatRupiah(balance),
-
-                        style: const TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              const SizedBox(height: 16),
-
-              // ==================================================
-              // PEMASUKAN & PENGELUARAN
+              // HEADER GREETING + PROFILE AVATAR
               // ==================================================
               Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Expanded(
-                    child: Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-
-                          children: [
-                            const Text(
-                              'Pemasukan',
-
-                              style: TextStyle(color: Colors.grey),
-                            ),
-
-                            const SizedBox(height: 8),
-
-                            Text(
-                              formatRupiah(totalIncome),
-
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.green,
-                              ),
-                            ),
-                          ],
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Halo, ${currentUser.name} 👋',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
+                          ),
                         ),
-                      ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Bagaimana kondisi keuanganmu hari ini?',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: textSecondary,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-
                   const SizedBox(width: 12),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(24),
+                    onTap: () async {
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ProfilePage(
+                            user: currentUser,
+                            onLogout: widget.onLogout,
+                          ),
+                        ),
+                      );
 
-                  Expanded(
-                    child: Card(
-                      child: Padding(
-                        padding: const EdgeInsets.all(16),
-
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-
-                          children: [
-                            const Text(
-                              'Pengeluaran',
-
-                              style: TextStyle(color: Colors.grey),
-                            ),
-
-                            const SizedBox(height: 8),
-
-                            Text(
-                              formatRupiah(totalExpense),
-
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red,
-                              ),
-                            ),
-                          ],
+                      if (result is UserModel && mounted) {
+                        setState(() {
+                          currentUser = result;
+                        });
+                      }
+                    },
+                    child: CircleAvatar(
+                      radius: 22,
+                      backgroundColor:
+                          primaryBlue.withValues(alpha: 0.1),
+                      child: Text(
+                        currentUser.name.isNotEmpty
+                            ? currentUser.name[0].toUpperCase()
+                            : '?',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: primaryBlue,
                         ),
                       ),
                     ),
@@ -706,136 +572,251 @@ class _HomePageState extends State<HomePage> {
                 ],
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
+
+              // ==================================================
+              // BALANCE & FINANCIAL SUMMARY CARD
+              // ==================================================
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: border, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Total Saldo',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: textSecondary,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      formatRupiah(balance),
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: isNegativeBalance
+                            ? expenseRed
+                            : textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Divider(height: 1, color: border),
+                    const SizedBox(height: 14),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 16,
+                                backgroundColor:
+                                    incomeGreen.withValues(alpha: 0.12),
+                                child: const Icon(
+                                  Icons.arrow_downward,
+                                  size: 16,
+                                  color: incomeGreen,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Pemasukan',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: textSecondary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      formatRupiah(totalIncome),
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: incomeGreen,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          height: 32,
+                          width: 1,
+                          color: border,
+                          margin: const EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                        Expanded(
+                          child: Row(
+                            children: [
+                              CircleAvatar(
+                                radius: 16,
+                                backgroundColor:
+                                    expenseRed.withValues(alpha: 0.12),
+                                child: const Icon(
+                                  Icons.arrow_upward,
+                                  size: 16,
+                                  color: expenseRed,
+                                ),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Pengeluaran',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: textSecondary,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      formatRupiah(totalExpense),
+                                      style: const TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
+                                        color: expenseRed,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 16),
 
               // ==================================================
               // FINANCIAL HEALTH SCORE
               // ==================================================
-              InkWell(
-                borderRadius: BorderRadius.circular(16),
+              Container(
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: border, width: 1),
+                ),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(16),
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) =>
+                            FinancialHealthPage(user: widget.user),
+                      ),
+                    );
 
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          FinancialHealthPage(user: widget.user),
-                    ),
-                  );
-
-                  if (!mounted) return;
-
-                  await loadTransactions();
-                },
-
-                child: Card(
+                    if (!mounted) return;
+                    await loadTransactions();
+                  },
                   child: Padding(
-                    padding: const EdgeInsets.all(20),
-
+                    padding: const EdgeInsets.all(18),
                     child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-
-                              decoration: BoxDecoration(
-                                color: healthColor.withValues(alpha: 0.12),
-
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-
-                              child: Icon(healthIcon, color: healthColor),
-                            ),
-
-                            const SizedBox(width: 12),
-
-                            const Expanded(
-                              child: Text(
-                                'Financial Health',
-
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        const SizedBox(height: 20),
-
-                        Stack(
-                          alignment: Alignment.center,
-
-                          children: [
-                            SizedBox(
-                              width: 150,
-                              height: 150,
-
-                              child: CircularProgressIndicator(
-                                value: healthScore != null
-                                    ? healthScore / 100
-                                    : 0,
-
-                                strokeWidth: 12,
-
-                                backgroundColor: Colors.grey.withValues(
-                                  alpha: 0.15,
-                                ),
-
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  healthColor,
-                                ),
-                              ),
-                            ),
-
-                            Column(
+                            Row(
                               children: [
-                                Text(
-                                  healthScore != null
-                                      ? healthScore.toStringAsFixed(0)
-                                      : '—',
-
-                                  style: const TextStyle(
-                                    fontSize: 36,
-                                    fontWeight: FontWeight.bold,
+                                CircleAvatar(
+                                  radius: 16,
+                                  backgroundColor:
+                                      healthColor.withValues(alpha: 0.12),
+                                  child: Icon(
+                                    healthIcon,
+                                    size: 18,
+                                    color: healthColor,
                                   ),
                                 ),
-
-                                const Text(
-                                  '/ 100',
-
-                                  style: TextStyle(color: Colors.grey),
+                                const SizedBox(width: 10),
+                                Text(
+                                  'Financial Health',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: textPrimary,
+                                  ),
                                 ),
                               ],
                             ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: healthColor.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                healthStatus,
+                                style: TextStyle(
+                                  color: healthColor,
+                                  fontWeight: FontWeight.w600,
+                                  fontSize: 12,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
-
-                        const SizedBox(height: 16),
-
-                        Text(
-                          healthStatus,
-
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: healthColor,
-                          ),
-                        ),
-
-                        const SizedBox(height: 10),
-
-                        Text(
-                          healthDescription,
-
-                          textAlign: TextAlign.center,
-
-                          style: const TextStyle(
-                            color: Colors.grey,
-                            height: 1.5,
-                          ),
+                        const SizedBox(height: 14),
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Text(
+                              healthScore != null
+                                  ? healthScore.toStringAsFixed(0)
+                                  : '—',
+                              style: TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                color: healthColor,
+                              ),
+                            ),
+                            Text(
+                              ' / 100',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: mutedText,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Text(
+                                healthDescription,
+                                style: TextStyle(
+                                  color: textSecondary,
+                                  fontSize: 12,
+                                  height: 1.4,
+                                ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -843,198 +824,184 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
 
               // ==================================================
               // THINKSPEND INSIGHT
               // ==================================================
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.primaryContainer,
-                            ),
-
-                            child: Icon(
-                              Icons.psychology_outlined,
-
-                              color: Theme.of(
-                                context,
-                              ).colorScheme.onPrimaryContainer,
-                            ),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: border, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundColor:
+                              primaryBlue.withValues(alpha: 0.1),
+                          child: const Icon(
+                            Icons.psychology_outlined,
+                            size: 18,
+                            color: primaryBlue,
                           ),
-
-                          const SizedBox(width: 12),
-
-                          const Expanded(
-                            child: Text(
-                              'ThinkSpend Insight',
-
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      Text(
-                        spendingInsight,
-                        style: const TextStyle(fontSize: 15, height: 1.5),
-                      ),
-
-                      if (impulseInsight != null) ...[
-                        const SizedBox(height: 16),
-
-                        const Divider(),
-
-                        const SizedBox(height: 12),
-
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest,
-                          ),
-                          child: Text(
-                            impulseInsight,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              height: 1.5,
-                              fontWeight: FontWeight.w500,
-                            ),
+                        ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'ThinkSpend Insight',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
                           ),
                         ),
                       ],
-
-                      if (budgetInsight != null) ...[
-                        const SizedBox(height: 16),
-
-                        const Divider(),
-
-                        const SizedBox(height: 12),
-
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(14),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.surfaceContainerHighest,
-                          ),
-                          child: Text(
-                            budgetInsight,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              height: 1.5,
-                              fontWeight: FontWeight.w500,
-                            ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      spendingInsight,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: textSecondary,
+                        height: 1.5,
+                      ),
+                    ),
+                    if (impulseInsight != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          color: const Color(0xFFEA580C).withValues(alpha: 0.08),
+                        ),
+                        child: Text(
+                          impulseInsight,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            height: 1.4,
+                            color: Color(0xFFEA580C),
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
-                      ],
+                      ),
                     ],
-                  ),
+                    if (budgetInsight != null) ...[
+                      const SizedBox(height: 10),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          color: primaryBlue.withValues(
+                            alpha: 0.06,
+                          ),
+                        ),
+                        child: Text(
+                          budgetInsight,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            height: 1.4,
+                            color: primaryBlue,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
 
-              const SizedBox(height: 30),
+              const SizedBox(height: 16),
 
               // ==================================================
               // SMART SAVING PLANNER
               // ==================================================
-              Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(20),
-
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(10),
-                            decoration: BoxDecoration(
-                              color: Colors.green.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.savings_outlined,
-                              color: Colors.green,
-                            ),
-                          ),
-
-                          const SizedBox(width: 12),
-
-                          const Expanded(
-                            child: Text(
-                              'Smart Saving Planner',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      Text(
-                        totalIncome <= 0
-                            ? 'Belum ada pemasukan untuk direncanakan. '
-                                'Catat pemasukanmu terlebih dahulu '
-                                'untuk mendapatkan rekomendasi menabung.'
-                            : isNegativeBalance
-                            ? 'Prioritaskan memperbaiki kondisi keuanganmu '
-                                'dulu sebelum menabung.'
-                            : 'Kamu masih punya uang yang bisa ditabung.',
-                        style: const TextStyle(color: Colors.grey, height: 1.5),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      if (totalIncome > 0 && !isNegativeBalance)
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: () async {
-                              await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (context) =>
-                                      SavingPlannerPage(user: widget.user),
-                                ),
-                              );
-
-                              await loadTransactions();
-                            },
-                            icon: const Icon(Icons.arrow_forward),
-                            label: const Text('Lihat Rencana Menabung'),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(
+                  color: surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: border, width: 1),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundColor: incomeGreen.withValues(alpha: 0.12),
+                          child: const Icon(
+                            Icons.savings_outlined,
+                            size: 18,
+                            color: incomeGreen,
                           ),
                         ),
+                        const SizedBox(width: 10),
+                        Text(
+                          'Smart Saving Planner',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: textPrimary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      totalIncome <= 0
+                          ? 'Belum ada pemasukan untuk direncanakan. Catat pemasukanmu terlebih dahulu untuk mendapatkan rekomendasi menabung.'
+                          : isNegativeBalance
+                          ? 'Prioritaskan memperbaiki kondisi keuanganmu dulu sebelum menabung.'
+                          : 'Kamu masih punya alokasi dana yang bisa ditabung secara terencana.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: textSecondary,
+                        height: 1.4,
+                      ),
+                    ),
+                    if (totalIncome > 0 && !isNegativeBalance) ...[
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: primaryBlue,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            side: BorderSide(color: border),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                          onPressed: () async {
+                            await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    SavingPlannerPage(user: widget.user),
+                              ),
+                            );
+
+                            await loadTransactions();
+                          },
+                          icon: const Icon(Icons.arrow_forward, size: 16),
+                          label: const Text(
+                            'Lihat Rencana Menabung',
+                            style: TextStyle(fontSize: 13),
+                          ),
+                        ),
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               ),
 
@@ -1045,37 +1012,44 @@ class _HomePageState extends State<HomePage> {
               // ==================================================
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
-
                 children: [
-                  const Text(
+                  Text(
                     'Transaksi Terbaru',
-
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: textPrimary,
+                    ),
                   ),
-
                   if (recentTransactions.isNotEmpty)
                     Text(
                       '${recentTransactions.length} transaksi',
-
-                      style: const TextStyle(color: Colors.grey),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: mutedText,
+                      ),
                     ),
                 ],
               ),
 
               const SizedBox(height: 12),
 
-              // ==================================================
-              // EMPTY STATE / TRANSACTION LIST
-              // ==================================================
               if (recentTransactions.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 20),
-
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 32),
+                  decoration: BoxDecoration(
+                    color: surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: border),
+                  ),
                   child: Center(
                     child: Text(
                       'Belum ada transaksi.',
-
-                      style: TextStyle(color: Colors.grey),
+                      style: TextStyle(
+                        color: mutedText,
+                        fontSize: 13,
+                      ),
                     ),
                   ),
                 )
@@ -1102,6 +1076,7 @@ class _HomePageState extends State<HomePage> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 }

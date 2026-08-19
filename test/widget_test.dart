@@ -5,6 +5,7 @@ import 'package:thinkspend/models/transaction_model.dart';
 import 'package:thinkspend/pages/login_page.dart';
 import 'package:thinkspend/widgets/goal_card.dart';
 import 'package:thinkspend/widgets/transaction_card.dart';
+import 'package:thinkspend/services/theme_service.dart';
 
 void main() {
   testWidgets('TransactionCard renders transaction details', (WidgetTester tester) async {
@@ -61,5 +62,20 @@ void main() {
     );
 
     expect(find.byType(TextField), findsNWidgets(2));
+  });
+
+  test('ThemeService toggles theme modes properly', () {
+    final themeService = ThemeService.instance;
+    themeService.setThemeMode(ThemeMode.light);
+    expect(themeService.themeMode, ThemeMode.light);
+    expect(themeService.themeModeName, 'Terang');
+
+    themeService.setThemeMode(ThemeMode.dark);
+    expect(themeService.themeMode, ThemeMode.dark);
+    expect(themeService.themeModeName, 'Gelap');
+
+    themeService.setThemeMode(ThemeMode.system);
+    expect(themeService.themeMode, ThemeMode.system);
+    expect(themeService.themeModeName, 'Ikuti Sistem');
   });
 }

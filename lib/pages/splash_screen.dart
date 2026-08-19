@@ -156,10 +156,10 @@ class _SplashScreenState extends State<SplashScreen>
                               ),
                             ),
                             TextSpan(
-                              text: 'spend',
+                              text: 'Spend',
                               style: GoogleFonts.plusJakartaSans(
                                 fontSize: 28,
-                                fontWeight: FontWeight.w400, // Reguler / Tipis
+                                fontWeight: FontWeight.w800, // Bold tegas
                                 color: const Color(
                                   0xFF2563EB,
                                 ), // Accent Blue elegan (bisa diganti 0xFF059669 untuk hijau)
