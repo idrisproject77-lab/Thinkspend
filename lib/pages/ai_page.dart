@@ -1,53 +1,76 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../models/goal_model.dart';
 import '../services/financial_analyzer.dart';
+import '../services/privacy_service.dart';
+import '../services/theme_service.dart';
+import '../utils/currency_formatter.dart';
 
+/// Halaman asisten keuangan cerdas berbasis AI ThinkSpend.
+///
+/// Menyediakan antarmuka chat interaktif dengan chip rekomendasi pertanyaan
+/// dan engine rule-based contextual analyzer ([FinancialAnalyzer]) untuk memberikan
+/// konsultasi kondisi finansial, evaluasi pengeluaran, simulasi target tabungan, dan tips keuangan.
 class AiPage extends StatefulWidget {
   final int userId;
   final String userName;
+  final bool isActive;
 
-  const AiPage({super.key, required this.userId, required this.userName});
+  const AiPage({
+    super.key,
+    required this.userId,
+    required this.userName,
+    this.isActive = true,
+  });
 
   @override
   State<AiPage> createState() => _AiPageState();
 }
 
-class _AiPageState extends State<AiPage> {
-  static const Color navy = Color(0xFF0F172A);
-  static const Color blue = Color(0xFF2563EB);
-  static const Color background = Color(0xFFF8FAFC);
-  static const Color secondaryText = Color(0xFF64748B);
-  static const Color mutedText = Color(0xFF94A3B8);
-  static const Color borderColor = Color(0xFFE2E8F0);
-
+class _AiPageState extends State<AiPage> with WidgetsBindingObserver {
   FinancialSummary? summary;
-
   bool isLoading = true;
 
   final TextEditingController messageController = TextEditingController();
-
   final ScrollController scrollController = ScrollController();
-
   final List<_ChatMessage> messages = [];
-
   bool isTyping = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadFinancialData();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _loadFinancialData();
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant AiPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Sinkronisasi data saat user berpindah kembali ke tab AI atau userId berganti
+    if (widget.userId != oldWidget.userId ||
+        (!oldWidget.isActive && widget.isActive)) {
+      _loadFinancialData();
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     messageController.dispose();
     scrollController.dispose();
     super.dispose();
   }
 
   // ============================================================
-  // LOAD DATA USER
+  // LOAD DATA USER (LIVE DATA REFRESH)
   // ============================================================
 
   Future<void> _loadFinancialData() async {
@@ -72,35 +95,91 @@ class _AiPageState extends State<AiPage> {
   }
 
   // ============================================================
-  // FORMAT RUPIAH
+  // HELPER TARGET & SAVING RULES
   // ============================================================
 
-  String _formatRupiah(double value) {
-    final rounded = value.round().abs().toString();
+  GoalModel? _getNearestGoal(List<GoalModel> goals) {
+    if (goals.isEmpty) return null;
 
-    final buffer = StringBuffer();
+    GoalModel? selectedGoal;
 
-    for (int i = 0; i < rounded.length; i++) {
-      final position = rounded.length - i;
+    for (final goal in goals) {
+      if (goal.targetAmount <= goal.currentAmount) {
+        continue;
+      }
 
-      buffer.write(rounded[i]);
+      if (selectedGoal == null) {
+        selectedGoal = goal;
+        continue;
+      }
 
-      if (position > 1 && position % 3 == 1) {
-        buffer.write('.');
+      if (goal.priority == 'High' && selectedGoal.priority != 'High') {
+        selectedGoal = goal;
+        continue;
+      }
+
+      if (goal.deadline != null && selectedGoal.deadline != null) {
+        if (goal.deadline!.compareTo(selectedGoal.deadline!) < 0) {
+          selectedGoal = goal;
+        }
       }
     }
 
-    final result = 'Rp ${buffer.toString()}';
+    return selectedGoal ?? goals.first;
+  }
 
-    if (value < 0) {
-      return '-$result';
+  int _calculateRemainingMonths(String? deadline) {
+    if (deadline == null || deadline.trim().isEmpty) {
+      return 0;
     }
 
-    return result;
+    final parsedDate = DateTime.tryParse(deadline.trim());
+    if (parsedDate == null) {
+      return 0;
+    }
+
+    final now = DateTime.now();
+    if (parsedDate.isBefore(now)) {
+      return 0;
+    }
+
+    int months =
+        (parsedDate.year - now.year) * 12 + parsedDate.month - now.month;
+
+    if (parsedDate.day > now.day) {
+      months++;
+    }
+
+    if (months <= 0) {
+      return 1;
+    }
+
+    return months;
+  }
+
+  double _calculateRequiredMonthlySaving(GoalModel goal) {
+    final remaining = (goal.targetAmount - goal.currentAmount) > 0
+        ? (goal.targetAmount - goal.currentAmount)
+        : 0.0;
+
+    if (remaining <= 0) {
+      return 0;
+    }
+
+    if (goal.deadline == null || goal.deadline!.trim().isEmpty) {
+      return 0;
+    }
+
+    final months = _calculateRemainingMonths(goal.deadline);
+    if (months <= 0) {
+      return remaining;
+    }
+
+    return remaining / months;
   }
 
   // ============================================================
-  // ASK AI — SEMENTARA MOCK
+  // ASK AI — RULE-BASED SIMULATION
   // ============================================================
 
   Future<void> askAi(String question) async {
@@ -112,23 +191,35 @@ class _AiPageState extends State<AiPage> {
 
     setState(() {
       messages.add(_ChatMessage(text: text, isUser: true));
-
       isTyping = true;
     });
 
     messageController.clear();
-
     _scrollToBottom();
 
-    await Future.delayed(const Duration(milliseconds: 1000));
+    // Selalu ambil data keuangan terbaru secara asinkron sebelum menghasilkan jawaban AI
+    // agar AI membaca transaksi dan target terbaru tanpa perlu restart aplikasi.
+    try {
+      final freshSummary = await FinancialAnalyzer.analyze(widget.userId);
+      if (mounted) {
+        setState(() {
+          summary = freshSummary;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error updating summary in askAi: $e');
+    }
+
+    await Future.delayed(const Duration(milliseconds: 300));
 
     if (!mounted) return;
 
     final response = _generateResponse(text);
 
     setState(() {
-      messages.add(_ChatMessage(text: response, isUser: false));
-
+      messages.add(
+        _ChatMessage(text: response, isUser: false, originalQuestion: text),
+      );
       isTyping = false;
     });
 
@@ -136,7 +227,7 @@ class _AiPageState extends State<AiPage> {
   }
 
   // ============================================================
-  // RESPONSE BERDASARKAN DATA ASLI
+  // RESPONSE BERDASARKAN DATA ASLI (RULE MATCHING)
   // ============================================================
 
   String _generateResponse(String question) {
@@ -146,259 +237,370 @@ class _AiPageState extends State<AiPage> {
       return '''
 Aku belum bisa membaca data keuanganmu saat ini.
 
-Coba buka kembali halaman ThinkSpend AI beberapa saat lagi.
+Coba buka kembali halaman ThinkSpend AI beberapa saat lagi setelah data tersinkronisasi.
 ''';
     }
 
     final lower = question.toLowerCase();
 
     // ==========================================================
-    // BOROS
+    // 1. KONDISI KEUANGAN
     // ==========================================================
+    if (lower.contains('kondisi') ||
+        lower.contains('keuangan') ||
+        lower.contains('finansial') ||
+        lower.contains('sehat') ||
+        lower.contains('keadaanku') ||
+        lower.contains('kondisiku')) {
+      // 1. Jika belum ada data transaksi sama sekali
+      if (data.income <= 0 && data.expense <= 0 && data.transactionCount == 0) {
+        return '''
+Belum ada data transaksi yang tercatat di akunmu.
 
-    if (lower.contains('boros')) {
-      final projectedExpense = data.projectedMonthlyExpense;
-
-      final hasProjection =
-          data.dataDays >= 3 && projectedExpense > 0 && data.income > 0;
-
-      // ==========================================================
-      // BELUM ADA DATA PEMASUKAN
-      // ==========================================================
+Mulai catat transaksi pemasukan dan pengeluaran agar ThinkSpend AI dapat mengevaluasi dan memberikan analisis kesehatan finansialmu.
+''';
+      }
 
       if (data.income <= 0) {
         return '''
-Aku belum bisa menentukan apakah kamu sedang boros karena belum ada pemasukan yang bisa dijadikan pembanding.
+Belum ada pemasukan yang tercatat di akunmu.
 
-Coba catat pemasukanmu terlebih dahulu. Setelah itu aku bisa membandingkan pola pengeluaranmu dengan kondisi keuanganmu.
+• Pengeluaran: ${formatRupiah(data.expense)}
+• Sisa saldo: ${formatRupiah(data.balance)}
+
+Catat pemasukanmu agar ThinkSpend AI dapat mengevaluasi kesehatan finansialmu secara komprehensif.
 ''';
       }
 
-      // ==========================================================
-      // DATA BELUM CUKUP
-      // ==========================================================
+      final status = FinancialAnalyzer.financialStatus(data);
+      final scoreText = data.healthScore != null ? ' dengan skor ${data.healthScore!.toInt()}/100' : '';
+      final disclaimer = data.dataDays < 3
+          ? '\n\nCatatan: pencatatan transaksi masih tergolong baru (${data.dataDays > 0 ? '${data.dataDays} hari' : 'awal'}), sehingga konsistensi pencatatan perlu ditingkatkan agar analisis pola keuangan jangka panjang semakin akurat.'
+          : '';
+
+      if (status == 'Berisiko' || status == 'Perlu Perbaikan') {
+        return '''
+Kondisi keuanganmu saat ini tergolong Perlu Perbaikan$scoreText.
+
+Pemasukanmu sekitar ${formatRupiah(data.income)}, sedangkan total pengeluaran telah mencapai ${formatRupiah(data.expense)}. Sisa saldo yang tersedia saat ini sekitar ${formatRupiah(data.balance)}.
+
+Pengeluaranmu sangat tinggi atau melebihi pemasukan. Cobalah mengevaluasi kategori pengeluaran terbesar (${data.topExpenseCategory ?? 'pengeluaran harian'}) dan tunda belanja non-prioritas agar arus kasmu kembali positif.$disclaimer
+''';
+      }
+
+      if (status == 'Perlu diperhatikan' || status == 'Perlu Perhatian') {
+        return '''
+Kondisi keuanganmu saat ini tergolong Perlu Perhatian$scoreText.
+
+Pemasukanmu sekitar ${formatRupiah(data.income)}, sedangkan pengeluaran sekitar ${formatRupiah(data.expense)}. Sisa saldo yang tersedia sekitar ${formatRupiah(data.balance)}.
+
+Pengeluaranmu mulai mendekati batas pemasukan. Sebaiknya pantau dan batasi pos pengeluaran sekunder agar tetap memiliki ruang yang cukup untuk menabung.$disclaimer
+''';
+      }
+
+      if (status == 'Keuangan Sehat' || status == 'Sangat Sehat') {
+        return '''
+Kondisi keuanganmu saat ini tergolong Keuangan Sehat$scoreText.
+
+Pemasukanmu ${formatRupiah(data.income)} dan pengeluaran ${formatRupiah(data.expense)}, sehingga masih terdapat sisa saldo ${formatRupiah(data.balance)}. Arus kasmu positif dan pengeluaran masih terkendali.$disclaimer
+''';
+      }
+
+      // Cukup sehat
+      return '''
+Kondisi keuanganmu saat ini tergolong Cukup Sehat$scoreText.
+
+Pemasukanmu sekitar ${formatRupiah(data.income)}, sedangkan pengeluaran sekitar ${formatRupiah(data.expense)}. Dengan kondisi tersebut, sisa saldo yang tersedia saat ini sekitar ${formatRupiah(data.balance)}.
+
+Pengeluaranmu masih berada dalam batas yang relatif terkendali. Pertahankan kebiasaan ini dan sisihkan sebagian dana untuk target tabunganmu.$disclaimer
+''';
+    }
+
+    // ==========================================================
+    // 2. BOROS / PENGELUARAN
+    // ==========================================================
+    if (lower.contains('boros') ||
+        lower.contains('banyak belanja') ||
+        lower.contains('kebanyakan belanja') ||
+        lower.contains('pengeluaranku') ||
+        lower.contains('pola pengeluaran')) {
+      final projectedExpense = data.projectedMonthlyExpense;
+      final hasProjection =
+          data.dataDays >= 3 && projectedExpense > 0 && data.income > 0;
+
+      if (data.income <= 0) {
+        return '''
+Aku belum bisa menentukan apakah kamu sedang boros karena belum ada catatan pemasukan sebagai pembanding.
+
+Coba catat pemasukanmu terlebih dahulu agar aku bisa membandingkan rasio pengeluaranmu secara objektif.
+''';
+      }
 
       if (!hasProjection) {
         final actualPercentage = (data.expense / data.income) * 100;
-
         return '''
-Dari data yang sudah tercatat, kamu belum bisa langsung dibilang boros. 👌
+Dari data yang tercatat saat ini, kamu belum bisa langsung dinilai boros. 👌
 
-Pemasukanmu:
-${_formatRupiah(data.income)}
+• Pemasukan: ${formatRupiah(data.income)}
+• Pengeluaran: ${formatRupiah(data.expense)} (${actualPercentage.toStringAsFixed(1)}%)
 
-Pengeluaranmu:
-${_formatRupiah(data.expense)}
-
-Saat ini sekitar ${actualPercentage.toStringAsFixed(1)}% dari pemasukanmu sudah digunakan.
-
-Namun, aku belum bisa menilai pola pengeluaran bulananmu karena data yang tersedia belum mencapai 3 hari.
-
-💡 Tambahkan transaksi dari beberapa hari berikutnya agar aku bisa melihat apakah pola pengeluaranmu cenderung meningkat atau tetap terkendali.
+Namun, data aktif baru tercatat ${data.dataDays} hari sehingga belum membentuk proyeksi 30 hari. Terus catat transaksimu agar analisis pola pengeluaran semakin akurat.
 ''';
       }
 
-      // ==========================================================
-      // ADA PROYEKSI
-      // ==========================================================
-
       final projectedPercentage = (projectedExpense / data.income) * 100;
-
       final projectedBalance = data.income - projectedExpense;
-
-      // ==========================================================
-      // PROYEKSI > PEMASUKAN
-      // ==========================================================
 
       if (projectedPercentage > 100) {
         return '''
-⚠️ Pola pengeluaranmu perlu segera diperhatikan.
+Pola pengeluaranmu saat ini tergolong boros dan berisiko.
 
-Pengeluaran yang sudah tercatat:
-${_formatRupiah(data.expense)}
+Rata-rata pengeluaranmu adalah ${formatRupiah(data.averageDailyExpense)}/hari. Jika pola ini terus berlanjut, proyeksi pengeluaran bulananmu bisa mencapai ${formatRupiah(projectedExpense)}, melebihi pemasukanmu (${formatRupiah(data.income)}).
 
-Namun berdasarkan ${data.dataDays} hari data, rata-rata pengeluaranmu adalah:
-${_formatRupiah(data.averageDailyExpense)} per hari.
-
-Jika pola ini terus berlangsung, pengeluaranmu diproyeksikan mencapai:
-${_formatRupiah(projectedExpense)} per bulan.
-
-Itu lebih besar daripada pemasukanmu:
-${_formatRupiah(data.income)}
-
-Artinya, pengeluaran berpotensi melebihi pemasukan.
-
-💡 Coba evaluasi kategori pengeluaran terbesar:
-${data.topExpenseCategory ?? 'Belum tersedia'} sebesar ${_formatRupiah(data.topExpenseAmount)}.
+Pengeluaran terbesarmu saat ini ada pada kategori ${data.topExpenseCategory ?? 'Umum'} (${formatRupiah(data.topExpenseAmount)}). Mulailah mengurangi pos pengeluaran tersebut agar tidak terjadi defisit saldo.
 ''';
       }
-
-      // ==========================================================
-      // PROYEKSI 80–100%
-      // ==========================================================
 
       if (projectedPercentage >= 80) {
         return '''
-Kamu belum bisa langsung dibilang boros dari pengeluaran yang sudah tercatat, tetapi pola pengeluaranmu perlu diperhatikan. ⚠️
+Pola pengeluaranmu saat ini cenderung tinggi dan perlu diwaspadai.
 
-Saat ini kamu sudah mengeluarkan:
-${_formatRupiah(data.expense)}
+Proyeksi pengeluaran 30 hari diperkirakan mencapai ${formatRupiah(projectedExpense)} (${projectedPercentage.toStringAsFixed(1)}% dari pemasukan). Perkiraan sisa saldo bulananmu hanya sekitar ${formatRupiah(projectedBalance)}.
 
-dari pemasukan:
-${_formatRupiah(data.income)}.
-
-Namun berdasarkan ${data.dataDays} hari data, rata-rata pengeluaranmu adalah:
-${_formatRupiah(data.averageDailyExpense)} per hari.
-
-Jika pola ini berlanjut selama 30 hari, pengeluaranmu diproyeksikan mencapai:
-${_formatRupiah(projectedExpense)}.
-
-Itu sekitar ${projectedPercentage.toStringAsFixed(1)}% dari pemasukanmu.
-
-Perkiraan sisa pemasukan:
-${_formatRupiah(projectedBalance)}.
-
-Pengeluaran terbesar saat ini adalah:
-${data.topExpenseCategory ?? 'Belum tersedia'} sebesar ${_formatRupiah(data.topExpenseAmount)}.
-
-💡 Jadi yang perlu diperhatikan bukan hanya pengeluaranmu hari ini, tetapi apakah pola tersebut terus berlanjut.
+Sebaiknya prioritaskan pos kebutuhan pokok dan rem pengeluaran di kategori ${data.topExpenseCategory ?? 'Umum'} sebelum akhir bulan.
 ''';
       }
-
-      // ==========================================================
-      // PROYEKSI 60–80%
-      // ==========================================================
 
       if (projectedPercentage >= 60) {
         return '''
-Pengeluaranmu masih relatif terkendali, tetapi tetap perlu dipantau. 👍
+Pengeluaranmu saat ini masih relatif terkendali, namun tetap perlu dipantau.
 
-Berdasarkan ${data.dataDays} hari data:
+Proyeksi pengeluaran bulananmu sekitar ${formatRupiah(projectedExpense)} (${projectedPercentage.toStringAsFixed(1)}% dari pemasukan) dengan estimasi sisa ${formatRupiah(projectedBalance)}.
 
-Rata-rata pengeluaran:
-${_formatRupiah(data.averageDailyExpense)} per hari.
-
-Proyeksi pengeluaran 30 hari:
-${_formatRupiah(projectedExpense)}.
-
-Itu sekitar ${projectedPercentage.toStringAsFixed(1)}% dari pemasukanmu.
-
-Perkiraan sisa:
-${_formatRupiah(projectedBalance)}.
-
-💡 Selama pola ini tidak meningkat terlalu jauh, kondisi keuanganmu masih cukup terkendali.
+Jaga ritme pengeluaran ini agar tidak melonjak di minggu-minggu berikutnya.
 ''';
       }
 
-      // ==========================================================
-      // PROYEKSI < 60%
-      // ==========================================================
-
+      // < 60%
       return '''
-Dari pola pengeluaranmu saat ini, kamu belum terlihat boros. 👌
+Pola pengeluaranmu saat ini sangat sehat dan tidak boros! 👌
 
-Berdasarkan ${data.dataDays} hari data, pengeluaranmu diproyeksikan sekitar:
-${_formatRupiah(projectedExpense)} per bulan.
+Proyeksi pengeluaran bulananmu hanya sekitar ${formatRupiah(projectedExpense)} (${projectedPercentage.toStringAsFixed(1)}% dari pemasukan). Perkiraan sisa saldo mencapai ${formatRupiah(projectedBalance)}.
 
-Itu sekitar ${projectedPercentage.toStringAsFixed(1)}% dari pemasukanmu.
-
-Perkiraan sisa pemasukan:
-${_formatRupiah(projectedBalance)}.
-
-Pengeluaran terbesar:
-${data.topExpenseCategory ?? 'Belum tersedia'} sebesar ${_formatRupiah(data.topExpenseAmount)}.
-
-💡 Pola pengeluaranmu masih relatif terkendali. Tetap pantau agar tidak meningkat tanpa disadari.
+Pertahankan kebiasaan hemat ini dan manfaatkan kelebihan dana untuk mempercepat pencapaian target tabungan.
 ''';
     }
 
     // ==========================================================
-    // TARGET
+    // 3. TARGET KEUANGAN
     // ==========================================================
-
-    if (lower.contains('target')) {
+    if (lower.contains('target') ||
+        lower.contains('tabungan') ||
+        lower.contains('tercapai') ||
+        lower.contains('impian') ||
+        lower.contains('goals') ||
+        lower.contains('goal')) {
       if (data.goals.isEmpty) {
         return '''
-Saat ini kamu belum memiliki target keuangan.
+Saat ini kamu belum memiliki target tabungan yang aktif.
 
-Coba buat satu target terlebih dahulu. Setelah itu aku bisa membantu mengevaluasi progress dan kebutuhan tabunganmu.
+Buat target tabungan pertamamu di menu Target agar aku bisa membantu menghitung kebutuhan menabung dan peluang pencapaiannya.
 ''';
       }
 
-      final goal = data.goals.first;
+      final goal = _getNearestGoal(data.goals)!;
+      final remaining = (goal.targetAmount - goal.currentAmount) > 0
+          ? (goal.targetAmount - goal.currentAmount)
+          : 0.0;
+      final progressPercent = goal.targetAmount > 0
+          ? ((goal.currentAmount / goal.targetAmount) * 100).clamp(0, 100)
+          : 0.0;
 
-      final progress = FinancialAnalyzer.goalProgress(goal);
+      final availableMoney =
+          (data.income - data.expense) > 0 ? (data.income - data.expense) : 0.0;
+      final recommendedSaving = availableMoney * 0.40;
+      final hasDeadline =
+          goal.deadline != null && goal.deadline!.trim().isNotEmpty;
+      final requiredMonthly =
+          hasDeadline ? _calculateRequiredMonthlySaving(goal) : 0.0;
 
-      final percentage = (progress * 100).toStringAsFixed(1);
+      if (remaining <= 0) {
+        return '''
+Target "${goal.name}" sudah berstatus Target Tercapai! 🎉
+
+Kamu telah berhasil mengumpulkan ${formatRupiah(goal.currentAmount)} dari target ${formatRupiah(goal.targetAmount)} (100%).
+
+Selamat atas pencapaian ini! Kamu bisa mulai merencanakan target tabungan berikutnya.
+''';
+      }
+
+      if (hasDeadline) {
+        final months = _calculateRemainingMonths(goal.deadline);
+        if (months <= 0) {
+          return '''
+Target "${goal.name}" berstatus Deadline Terlewat.
+
+• Terkumpul: ${formatRupiah(goal.currentAmount)} dari ${formatRupiah(goal.targetAmount)} (${progressPercent.toStringAsFixed(1)}%)
+• Sisa target: ${formatRupiah(remaining)}
+• Deadline: ${goal.deadline}
+
+Deadline target ini sudah terlewati. Agar perencanaan tetap terarah, perbarui tanggal deadline target di menu Target.
+''';
+        }
+
+        if (recommendedSaving >= requiredMonthly && recommendedSaving > 0) {
+          return '''
+Target "${goal.name}" saat ini berstatus Target Terjangkau.
+
+• Terkumpul: ${formatRupiah(goal.currentAmount)} dari ${formatRupiah(goal.targetAmount)} (${progressPercent.toStringAsFixed(1)}%)
+• Sisa target: ${formatRupiah(remaining)}
+• Perlu ditabung: ${formatRupiah(requiredMonthly)}/bulan
+• Estimasi kemampuan: ${formatRupiah(recommendedSaving)}/bulan
+
+Dengan konsistensi menabung saat ini, target ini sangat realistis untuk dicapai sebelum deadline (${goal.deadline}).
+''';
+        }
+
+        final shortfall = (requiredMonthly - recommendedSaving) > 0
+            ? (requiredMonthly - recommendedSaving)
+            : 0.0;
+
+        return '''
+Target "${goal.name}" saat ini berstatus Perlu Penyesuaian.
+
+• Sisa target: ${formatRupiah(remaining)}
+• Perlu ditabung: ${formatRupiah(requiredMonthly)}/bulan
+• Estimasi kemampuan: ${formatRupiah(recommendedSaving)}/bulan
+• Selisih kebutuhan: ${formatRupiah(shortfall)}/bulan
+
+Agar target lebih realistis, kamu bisa memperpanjang tanggal deadline atau menyesuaikan nominal target sesuai kemampuan.
+''';
+      }
+
+      // Target tanpa deadline
+      if (recommendedSaving > 0) {
+        return '''
+Target "${goal.name}" berstatus Target Terjangkau (tanpa deadline).
+
+• Terkumpul: ${formatRupiah(goal.currentAmount)} dari ${formatRupiah(goal.targetAmount)} (${progressPercent.toStringAsFixed(1)}%)
+• Sisa target: ${formatRupiah(remaining)}
+• Kemampuan menabung: ${formatRupiah(recommendedSaving)}/bulan
+
+Target ini dapat dicapai secara bertahap sesuai kemampuan keuanganmu.
+''';
+      }
 
       return '''
-Target teratasmu saat ini adalah "${goal.name}".
+Target "${goal.name}" berstatus Perlu Penyesuaian.
 
-Progress:
-$percentage%
+Sisa target: ${formatRupiah(remaining)}. Saat ini belum ada estimasi kemampuan menabung yang cukup.
 
-Terkumpul:
-${_formatRupiah(goal.currentAmount)}
-
-Target:
-${_formatRupiah(goal.targetAmount)}
-
-Sisa:
-${_formatRupiah(goal.targetAmount - goal.currentAmount)}
-
-Aku bisa membantu membuat strategi pencapaiannya setelah analisis bulanan kita sudah lengkap.
+Evaluasi pengeluaranmu terlebih dahulu untuk membuka ruang tabungan.
 ''';
     }
 
     // ==========================================================
-    // BELI / BELANJA
+    // 4. PENGELUARAN TERBESAR
     // ==========================================================
+    if (lower.contains('terbesar') ||
+        lower.contains('paling banyak') ||
+        lower.contains('kategori') ||
+        lower.contains('banyak keluar') ||
+        lower.contains('keluar di mana') ||
+        lower.contains('paling boros')) {
+      if (data.expense <= 0 || data.topExpenseCategory == null) {
+        return '''
+Belum ada catatan pengeluaran di akunmu.
 
-    if (lower.contains('beli') || lower.contains('belanja')) {
+Catat pengeluaran harianmu terlebih dahulu agar aku bisa menganalisis kategori apa yang paling dominan.
+''';
+      }
+
+      final percentage =
+          data.expense > 0 ? (data.topExpenseAmount / data.expense) * 100 : 0.0;
+
       return '''
-Sebelum membeli sesuatu, aku akan melihat kemampuan keuanganmu terlebih dahulu.
+Pengeluaran terbesarmu saat ini berasal dari kategori ${data.topExpenseCategory}.
 
-Saat ini:
+Total pengeluaran di kategori ini mencapai ${formatRupiah(data.topExpenseAmount)}, atau menyumbang sekitar ${percentage.toStringAsFixed(1)}% dari total seluruh pengeluaranmu (${formatRupiah(data.expense)}).
 
-Pemasukan:
-${_formatRupiah(data.income)}
-
-Pengeluaran:
-${_formatRupiah(data.expense)}
-
-Sisa:
-${_formatRupiah(data.balance)}
-
-Jangan hanya melihat apakah saldo cukup. Pertimbangkan juga target dan kebutuhan rutinmu.
+Jika kamu ingin meningkatkan ruang menabung bulanan, mengevaluasi dan mengatur batas pengeluaran pada kategori ini bisa menjadi langkah awal yang paling efektif.
 ''';
     }
 
     // ==========================================================
-    // DEFAULT
+    // 5. KEMAMPUAN MENABUNG
     // ==========================================================
+    if (lower.contains('bisa nabung') ||
+        lower.contains('kemampuan nabung') ||
+        lower.contains('bisa menabung') ||
+        lower.contains('tabung berapa') ||
+        lower.contains('nabung berapa') ||
+        lower.contains('kemampuan menabung')) {
+      final availableMoney =
+          (data.income - data.expense) > 0 ? (data.income - data.expense) : 0.0;
+      final recommendedSaving = availableMoney * 0.40;
 
+      if (data.income <= 0) {
+        return '''
+Aku belum bisa menghitung kemampuan menabungmu karena belum ada data pemasukan yang tercatat.
+
+Silakan tambahkan data pemasukan terlebih dahulu di menu Transaksi.
+''';
+      }
+
+      if (availableMoney <= 0) {
+        return '''
+Saat ini total pengeluaranmu (${formatRupiah(data.expense)}) sudah menyamai atau melebihi pemasukan (${formatRupiah(data.income)}), sehingga belum ada uang tersedia untuk ditabung.
+
+Fokuslah menekan pengeluaran rutin terlebih dahulu agar arus kasmu kembali positif.
+''';
+      }
+
+      return '''
+Berdasarkan kondisi keuanganmu saat ini, estimasi kemampuan menabungmu adalah sekitar ${formatRupiah(recommendedSaving)}/bulan.
+
+Nilai ini dihitung dari estimasi rekomendasi 40% alokasi uang tersedia (${formatRupiah(availableMoney)} dari pemasukan ${formatRupiah(data.income)} dikurangi pengeluaran ${formatRupiah(data.expense)}).
+
+Kamu bisa mengalokasikan nominal ini ke target tabungan prioritasmu secara konsisten setiap bulannya.
+''';
+    }
+
+    // ==========================================================
+    // 6. KEPUTUSAN BELANJA
+    // ==========================================================
+    if (lower.contains('beli') ||
+        lower.contains('belanja') ||
+        lower.contains('aman kalau belanja') ||
+        lower.contains('boleh beli') ||
+        lower.contains('mau beli')) {
+      final status = FinancialAnalyzer.financialStatus(data);
+      return '''
+Sebelum memutuskan untuk membeli barang baru, berikut gambaran kondisi keuanganmu saat ini:
+
+• Sisa Saldo: ${formatRupiah(data.balance)}
+• Status Finansial: $status
+
+Jika pembelian ini bersifat sekunder atau impulsif, pastikan tidak mengorbankan pos kebutuhan pokok dan rencana tabungan rutinmu.
+
+💡 Catatan: Pada pengembangan ThinkSpend AI berikutnya, kamu akan dapat memasukkan harga barang secara spesifik untuk dihitung dampak langsungnya ke saldo dan targetmu.
+''';
+    }
+
+    // ==========================================================
+    // 7. FALLBACK QUESTION
+    // ==========================================================
     return '''
-Berikut gambaran kondisi keuanganmu saat ini:
+Aku saat ini dapat membantu menganalisis beberapa topik keuangan seperti:
 
-Pemasukan:
-${_formatRupiah(data.income)}
+• Kondisi Keuangan (misal: "Bagaimana kondisi keuanganku?")
+• Pola Pengeluaran & Boros (misal: "Apakah aku sedang boros?")
+• Target Tabungan (misal: "Apakah targetku bisa tercapai?")
+• Pengeluaran Terbesar (misal: "Pengeluaran terbesarku apa?")
+• Kemampuan Menabung (misal: "Aku bisa menabung berapa?")
+• Keputusan Belanja (misal: "Boleh beli barang ini?")
 
-Pengeluaran:
-${_formatRupiah(data.expense)}
-
-Sisa:
-${_formatRupiah(data.balance)}
-
-Jumlah transaksi:
-${data.transactionCount} transaksi
-
-Kategori terbesar:
-${data.topExpenseCategory ?? 'Belum tersedia'}
-
-Kondisi:
-${FinancialAnalyzer.financialStatus(data)}
-
-Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang bisa diberikan.
+Coba tanyakan salah satu topik di atas!
 ''';
   }
 
@@ -426,86 +628,99 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: background,
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        ThemeService.instance,
+        PrivacyService.instance,
+      ]),
+      builder: (context, _) {
+        final background = AppColors.background(context);
+        final textPrimary = AppColors.textPrimary(context);
+        final textSecondary = AppColors.textSecondary(context);
+        const blue = AppColors.primaryBlue;
 
-      appBar: AppBar(
-        backgroundColor: background,
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
-        titleSpacing: 8,
-
-        leading: messages.isNotEmpty
-            ? IconButton(
-                onPressed: () {
-                  setState(() {
-                    messages.clear();
-                    isTyping = false;
-                  });
-                },
-                icon: const Icon(Icons.arrow_back_rounded, color: navy),
-              )
-            : null,
-
-        title: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-
-              decoration: BoxDecoration(
-                color: blue.withValues(alpha: 0.10),
-                borderRadius: BorderRadius.circular(12),
-              ),
-
-              child: const Icon(
-                Icons.auto_awesome_rounded,
-                color: blue,
-                size: 21,
-              ),
-            ),
-
-            const SizedBox(width: 11),
-
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+        return Scaffold(
+          backgroundColor: background,
+          appBar: AppBar(
+            backgroundColor: background,
+            elevation: 0,
+            surfaceTintColor: Colors.transparent,
+            titleSpacing: 8,
+            leading: messages.isNotEmpty
+                ? IconButton(
+                    onPressed: () {
+                      setState(() {
+                        messages.clear();
+                        isTyping = false;
+                      });
+                    },
+                    icon: Icon(
+                      Icons.arrow_back_rounded,
+                      color: textPrimary,
+                    ),
+                  )
+                : null,
+            title: Row(
               children: [
-                Text(
-                  'ThinkSpend AI',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: navy,
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: blue.withValues(alpha: 0.10),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.auto_awesome_rounded,
+                    color: blue,
+                    size: 21,
                   ),
                 ),
-
-                Text(
-                  'Personal Financial Coach',
-                  style: GoogleFonts.plusJakartaSans(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w500,
-                    color: secondaryText,
-                  ),
+                const SizedBox(width: 11),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ThinkSpend AI',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w800,
+                        color: textPrimary,
+                      ),
+                    ),
+                    Text(
+                      'Personal Financial Coach (Simulated)',
+                      style: GoogleFonts.plusJakartaSans(
+                        fontSize: 9.5,
+                        fontWeight: FontWeight.w500,
+                        color: textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
-      ),
-
-      body: Column(
-        children: [
-          Expanded(
-            child: isLoading
-                ? _buildLoading()
-                : messages.isEmpty
-                ? _buildEmptyState()
-                : _buildChat(),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded),
+                tooltip: 'Segarkan Data',
+                onPressed: _loadFinancialData,
+              ),
+            ],
           ),
-
-          _buildInputArea(),
-        ],
-      ),
+          body: Column(
+            children: [
+              Expanded(
+                child: isLoading
+                    ? _buildLoading()
+                    : messages.isEmpty
+                    ? _buildEmptyState()
+                    : _buildChat(),
+              ),
+              _buildInputArea(),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -514,7 +729,9 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
   // ============================================================
 
   Widget _buildLoading() {
-    return const Center(child: CircularProgressIndicator(color: blue));
+    return const Center(
+      child: CircularProgressIndicator(color: AppColors.primaryBlue),
+    );
   }
 
   // ============================================================
@@ -522,53 +739,48 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
   // ============================================================
 
   Widget _buildEmptyState() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+    final textPrimary = AppColors.textPrimary(context);
+    final textSecondary = AppColors.textSecondary(context);
 
-      child: Column(
+    return RefreshIndicator(
+      onRefresh: _loadFinancialData,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-
         children: [
           Text(
             'Hai, ${widget.userName} 👋',
             style: GoogleFonts.plusJakartaSans(
-              fontSize: 27,
+              fontSize: 26,
               fontWeight: FontWeight.w800,
-              color: navy,
+              color: textPrimary,
               letterSpacing: -0.7,
             ),
           ),
-
-          const SizedBox(height: 7),
-
+          const SizedBox(height: 6),
           Text(
-            'Aku bantu kamu memahami dan\n'
-            'mengelola keuanganmu.',
+            'Aku bantu kamu memahami dan\nmengelola keuanganmu.',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 14,
-              height: 1.55,
-              color: secondaryText,
+              height: 1.5,
+              color: textSecondary,
               fontWeight: FontWeight.w500,
             ),
           ),
-
-          const SizedBox(height: 24),
-
+          const SizedBox(height: 20),
           _buildFinancialSnapshot(),
-
-          const SizedBox(height: 26),
-
+          const SizedBox(height: 24),
           Text(
             'Apa yang ingin kamu ketahui?',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 15,
               fontWeight: FontWeight.w800,
-              color: navy,
+              color: textPrimary,
             ),
           ),
-
           const SizedBox(height: 12),
-
           _buildQuestionCard(
             icon: Icons.account_balance_wallet_outlined,
             title: 'Apakah aku sedang boros?',
@@ -577,9 +789,7 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
               askAi('Apakah aku sedang boros?');
             },
           ),
-
           const SizedBox(height: 10),
-
           _buildQuestionCard(
             icon: Icons.flag_outlined,
             title: 'Apakah targetku bisa tercapai?',
@@ -588,9 +798,7 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
               askAi('Apakah targetku bisa tercapai?');
             },
           ),
-
           const SizedBox(height: 10),
-
           _buildQuestionCard(
             icon: Icons.shopping_bag_outlined,
             title: 'Boleh beli barang ini?',
@@ -599,9 +807,7 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
               askAi('Boleh beli barang ini?');
             },
           ),
-
           const SizedBox(height: 10),
-
           _buildQuestionCard(
             icon: Icons.analytics_outlined,
             title: 'Bagaimana kondisi keuanganku?',
@@ -612,8 +818,9 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 
   // ============================================================
   // FINANCIAL SNAPSHOT
@@ -626,209 +833,170 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
       return _buildDataError();
     }
 
+    final surface = AppColors.surface(context);
+    final border = AppColors.border(context);
+    final textPrimary = AppColors.textPrimary(context);
+    final textSecondary = AppColors.textSecondary(context);
+    final subtleBg = AppColors.subtleBg(context);
+    const blue = AppColors.primaryBlue;
+
     final hasProjection =
         data.dataDays >= 3 && data.projectedMonthlyExpense > 0;
 
     return Container(
       padding: const EdgeInsets.all(18),
-
       decoration: BoxDecoration(
-        color: Colors.white,
-
-        borderRadius: BorderRadius.circular(22),
-
-        border: Border.all(color: borderColor),
-
-        boxShadow: [
-          BoxShadow(
-            color: navy.withValues(alpha: 0.035),
-            blurRadius: 18,
-            offset: const Offset(0, 7),
-          ),
-        ],
+        color: surface,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: border),
       ),
-
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-
         children: [
-          // ======================================================
-          // HEADER
-          // ======================================================
+          // Header
           Row(
             children: [
               Container(
-                width: 38,
-                height: 38,
-
+                width: 36,
+                height: 36,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF7ED),
-                  borderRadius: BorderRadius.circular(12),
+                  color: AppColors.orange.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-
                 child: const Icon(
                   Icons.lightbulb_outline_rounded,
-                  color: Color(0xFFF59E0B),
-                  size: 21,
+                  color: AppColors.orange,
+                  size: 20,
                 ),
               ),
-
-              const SizedBox(width: 11),
-
+              const SizedBox(width: 10),
               Text(
                 'Financial Snapshot',
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
-                  color: navy,
+                  color: textPrimary,
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 16),
 
-          const SizedBox(height: 18),
-
-          // ======================================================
-          // PEMASUKAN & PENGELUARAN
-          // ======================================================
+          // Pemasukan & Pengeluaran
           Row(
             children: [
               Expanded(
                 child: _snapshotItem(
                   label: 'Pemasukan',
-                  value: _formatRupiah(data.income),
+                  value: formatRupiah(data.income),
+                  valueColor: AppColors.green,
                 ),
               ),
-
               Expanded(
                 child: _snapshotItem(
                   label: 'Pengeluaran',
-                  value: _formatRupiah(data.expense),
+                  value: formatRupiah(data.expense),
+                  valueColor: AppColors.red,
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 14),
 
-          const SizedBox(height: 17),
-
-          // ======================================================
-          // SISA & TRANSAKSI
-          // ======================================================
+          // Sisa & Transaksi
           Row(
             children: [
               Expanded(
                 child: _snapshotItem(
                   label: 'Sisa',
-                  value: _formatRupiah(data.balance),
+                  value: formatRupiah(data.balance),
+                  valueColor: blue,
                 ),
               ),
-
               Expanded(
                 child: _snapshotItem(
                   label: 'Transaksi',
                   value: '${data.transactionCount} transaksi',
+                  valueColor: textPrimary,
                 ),
               ),
             ],
           ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1, color: border),
+          ),
 
-          const SizedBox(height: 18),
-
-          Container(height: 1, color: borderColor),
-
-          const SizedBox(height: 15),
-
-          // ======================================================
-          // DATA ANALYSIS
-          // ======================================================
+          // Data Analysis
           Text(
             'Analisis pola pengeluaran',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
-              color: secondaryText,
+              color: textSecondary,
               fontWeight: FontWeight.w600,
             ),
           ),
-
-          const SizedBox(height: 12),
-
+          const SizedBox(height: 10),
           Row(
             children: [
               Expanded(
                 child: _snapshotItem(
                   label: 'Data tersedia',
                   value: '${data.dataDays} hari',
+                  valueColor: textPrimary,
                 ),
               ),
-
               Expanded(
                 child: _snapshotItem(
                   label: 'Rata-rata / hari',
                   value: data.dataDays > 0
-                      ? _formatRupiah(data.averageDailyExpense)
+                      ? formatRupiah(data.averageDailyExpense)
                       : 'Belum tersedia',
+                  valueColor: textPrimary,
                 ),
               ),
             ],
           ),
+          const SizedBox(height: 12),
 
-          const SizedBox(height: 15),
-
-          // ======================================================
-          // PROJECTION
-          // ======================================================
+          // Proyeksi
           Container(
             padding: const EdgeInsets.all(12),
-
             decoration: BoxDecoration(
-              color: hasProjection
-                  ? blue.withValues(alpha: 0.05)
-                  : const Color(0xFFF8FAFC),
-
-              borderRadius: BorderRadius.circular(13),
-
-              border: Border.all(color: borderColor),
+              color: hasProjection ? blue.withValues(alpha: 0.06) : subtleBg,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: border),
             ),
-
             child: Row(
               children: [
                 Icon(
                   hasProjection
                       ? Icons.trending_up_rounded
                       : Icons.hourglass_empty_rounded,
-
-                  color: hasProjection ? blue : mutedText,
-
+                  color: hasProjection ? blue : AppColors.muted(context),
                   size: 19,
                 ),
-
                 const SizedBox(width: 9),
-
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-
                     children: [
                       Text(
                         'Proyeksi pengeluaran 30 hari',
-
                         style: GoogleFonts.plusJakartaSans(
-                          fontSize: 10.5,
-                          color: secondaryText,
+                          fontSize: 11,
+                          color: textSecondary,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
-
                       const SizedBox(height: 3),
-
                       Text(
                         hasProjection
-                            ? _formatRupiah(data.projectedMonthlyExpense)
+                            ? formatRupiah(data.projectedMonthlyExpense)
                             : 'Belum tersedia',
-
                         style: GoogleFonts.plusJakartaSans(
                           fontSize: 13,
-                          color: navy,
+                          color: textPrimary,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -838,67 +1006,32 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
               ],
             ),
           ),
+          const SizedBox(height: 14),
 
-          // ======================================================
-          // PROYEKSI TAMBAHAN
-          // ======================================================
-          if (hasProjection) ...[
-            const SizedBox(height: 10),
-
-            Row(
-              children: [
-                Expanded(
-                  child: _snapshotItem(
-                    label: 'Sisa proyeksi',
-                    value: _formatRupiah(
-                      data.income - data.projectedMonthlyExpense,
-                    ),
-                  ),
-                ),
-
-                Expanded(
-                  child: _snapshotItem(
-                    label: 'Proyeksi / pemasukan',
-                    value: data.income > 0
-                        ? '${((data.projectedMonthlyExpense / data.income) * 100).toStringAsFixed(1)}%'
-                        : '-',
-                  ),
-                ),
-              ],
-            ),
-          ],
-
-          const SizedBox(height: 17),
-
-          // ======================================================
-          // TOP CATEGORY
-          // ======================================================
+          // Top Category
           Text(
             'Pengeluaran terbesar',
             style: GoogleFonts.plusJakartaSans(
               fontSize: 11,
-              color: secondaryText,
+              color: textSecondary,
               fontWeight: FontWeight.w500,
             ),
           ),
-
           const SizedBox(height: 4),
-
           Row(
             children: [
               Expanded(
                 child: Text(
                   data.topExpenseCategory ?? 'Belum tersedia',
                   style: GoogleFonts.plusJakartaSans(
-                    fontSize: 14,
-                    color: navy,
+                    fontSize: 13,
+                    color: textPrimary,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
               ),
-
               Text(
-                _formatRupiah(data.topExpenseAmount),
+                formatRupiah(data.topExpenseAmount),
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
                   color: blue,
@@ -907,40 +1040,30 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
               ),
             ],
           ),
+          const SizedBox(height: 12),
 
-          const SizedBox(height: 14),
-
-          // ======================================================
-          // HEALTH STATUS
-          // ======================================================
+          // Health Status
           Container(
             padding: const EdgeInsets.all(12),
-
             decoration: BoxDecoration(
               color: blue.withValues(alpha: 0.06),
-
               borderRadius: BorderRadius.circular(12),
             ),
-
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-
               children: [
                 Row(
                   children: [
-                    const Icon(Icons.verified_outlined, color: blue, size: 17),
-
-                    const SizedBox(width: 7),
-
+                    const Icon(Icons.verified_outlined, color: blue, size: 16),
+                    const SizedBox(width: 6),
                     Text(
                       'Kondisi: ',
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 11,
-                        color: secondaryText,
+                        color: textSecondary,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-
                     Expanded(
                       child: Text(
                         FinancialAnalyzer.financialStatus(data),
@@ -953,25 +1076,19 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
                     ),
                   ],
                 ),
-
                 const SizedBox(height: 6),
-
                 Text(
                   FinancialAnalyzer.healthExplanation(data),
                   style: GoogleFonts.plusJakartaSans(
-                    fontSize: 10.5,
+                    fontSize: 11,
                     height: 1.45,
-                    color: secondaryText,
+                    color: textSecondary,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
               ],
             ),
           ),
-
-          // ======================================================
-          // WARNING DATA BELUM CUKUP
-          // ======================================================
         ],
       ),
     );
@@ -981,27 +1098,31 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
   // SNAPSHOT ITEM
   // ============================================================
 
-  Widget _snapshotItem({required String label, required String value}) {
+  Widget _snapshotItem({
+    required String label,
+    required String value,
+    Color? valueColor,
+  }) {
+    final textSecondary = AppColors.textSecondary(context);
+    final textPrimary = AppColors.textPrimary(context);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-
       children: [
         Text(
           label,
           style: GoogleFonts.plusJakartaSans(
-            fontSize: 10.5,
-            color: secondaryText,
+            fontSize: 11,
+            color: textSecondary,
             fontWeight: FontWeight.w500,
           ),
         ),
-
-        const SizedBox(height: 4),
-
+        const SizedBox(height: 3),
         Text(
           value,
           style: GoogleFonts.plusJakartaSans(
             fontSize: 14,
-            color: navy,
+            color: valueColor ?? textPrimary,
             fontWeight: FontWeight.w800,
           ),
         ),
@@ -1014,18 +1135,21 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
   // ============================================================
 
   Widget _buildDataError() {
+    final surface = AppColors.surface(context);
+    final border = AppColors.border(context);
+    final textSecondary = AppColors.textSecondary(context);
+
     return Container(
       padding: const EdgeInsets.all(18),
-
       decoration: BoxDecoration(
-        color: Colors.white,
-
-        borderRadius: BorderRadius.circular(22),
-
-        border: Border.all(color: borderColor),
+        color: surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: border),
       ),
-
-      child: const Text('Data keuangan belum dapat dibaca.'),
+      child: Text(
+        'Data keuangan belum dapat dibaca.',
+        style: TextStyle(color: textSecondary),
+      ),
     );
   }
 
@@ -1039,74 +1163,65 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
     required String subtitle,
     required VoidCallback onTap,
   }) {
+    final surface = AppColors.surface(context);
+    final border = AppColors.border(context);
+    final textPrimary = AppColors.textPrimary(context);
+    final textSecondary = AppColors.textSecondary(context);
+    final mutedText = AppColors.muted(context);
+    const blue = AppColors.primaryBlue;
+
     return Material(
-      color: Colors.white,
-
-      borderRadius: BorderRadius.circular(17),
-
+      color: surface,
+      borderRadius: BorderRadius.circular(16),
       child: InkWell(
         onTap: onTap,
-
-        borderRadius: BorderRadius.circular(17),
-
+        borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
-
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(17),
-
-            border: Border.all(color: borderColor),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: border),
           ),
-
           child: Row(
             children: [
               Container(
-                width: 42,
-                height: 42,
-
+                width: 40,
+                height: 40,
                 decoration: BoxDecoration(
-                  color: blue.withValues(alpha: 0.08),
-
-                  borderRadius: BorderRadius.circular(13),
+                  color: blue.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-
-                child: Icon(icon, color: blue, size: 21),
+                child: Icon(icon, color: blue, size: 20),
               ),
-
-              const SizedBox(width: 13),
-
+              const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-
                   children: [
                     Text(
                       title,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 13,
                         fontWeight: FontWeight.w700,
-                        color: navy,
+                        color: textPrimary,
                       ),
                     ),
-
-                    const SizedBox(height: 3),
-
+                    const SizedBox(height: 2),
                     Text(
                       subtitle,
                       style: GoogleFonts.plusJakartaSans(
                         fontSize: 11,
                         fontWeight: FontWeight.w500,
-                        color: secondaryText,
+                        color: textSecondary,
                       ),
                     ),
                   ],
                 ),
               ),
-
-              const Icon(
+              Icon(
                 Icons.arrow_forward_ios_rounded,
                 color: mutedText,
-                size: 14,
+                size: 13,
               ),
             ],
           ),
@@ -1122,11 +1237,8 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
   Widget _buildChat() {
     return ListView.builder(
       controller: scrollController,
-
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
-
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
       itemCount: messages.length + (isTyping ? 1 : 0),
-
       itemBuilder: (context, index) {
         if (index >= messages.length) {
           return _buildTypingIndicator();
@@ -1142,36 +1254,39 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
   // ============================================================
 
   Widget _buildMessage(_ChatMessage message) {
+    final surface = AppColors.surface(context);
+    final border = AppColors.border(context);
+    final textPrimary = AppColors.textPrimary(context);
+    const blue = AppColors.primaryBlue;
+
+    // Dynamically re-evaluate AI response if originalQuestion is present so privacy toggles update instantly!
+    final displayText =
+        (!message.isUser && message.originalQuestion != null)
+            ? _generateResponse(message.originalQuestion!)
+            : message.text;
+
     return Align(
       alignment: message.isUser ? Alignment.centerRight : Alignment.centerLeft,
-
       child: Container(
-        constraints: const BoxConstraints(maxWidth: 310),
-
+        constraints: const BoxConstraints(maxWidth: 320),
         margin: const EdgeInsets.only(bottom: 12),
-
         padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 12),
-
         decoration: BoxDecoration(
-          color: message.isUser ? blue : Colors.white,
-
+          color: message.isUser ? blue : surface,
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(17),
-            topRight: const Radius.circular(17),
-            bottomLeft: Radius.circular(message.isUser ? 17 : 4),
-            bottomRight: Radius.circular(message.isUser ? 4 : 17),
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: Radius.circular(message.isUser ? 16 : 4),
+            bottomRight: Radius.circular(message.isUser ? 4 : 16),
           ),
-
-          border: message.isUser ? null : Border.all(color: borderColor),
+          border: message.isUser ? null : Border.all(color: border),
         ),
-
         child: Text(
-          message.text,
-
+          displayText,
           style: GoogleFonts.plusJakartaSans(
             fontSize: 13,
             height: 1.5,
-            color: message.isUser ? Colors.white : navy,
+            color: message.isUser ? Colors.white : textPrimary,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -1184,41 +1299,38 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
   // ============================================================
 
   Widget _buildTypingIndicator() {
+    final surface = AppColors.surface(context);
+    final border = AppColors.border(context);
+    final textSecondary = AppColors.textSecondary(context);
+    const blue = AppColors.primaryBlue;
+
     return Align(
       alignment: Alignment.centerLeft,
-
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
-
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
-          color: Colors.white,
-
-          borderRadius: BorderRadius.circular(17),
-
-          border: Border.all(color: borderColor),
+          color: surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: border),
         ),
-
         child: Row(
           mainAxisSize: MainAxisSize.min,
-
           children: [
             const SizedBox(
-              width: 16,
-              height: 16,
-
-              child: CircularProgressIndicator(strokeWidth: 2, color: blue),
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: blue,
+              ),
             ),
-
-            const SizedBox(width: 10),
-
+            const SizedBox(width: 8),
             Text(
-              'ThinkSpend AI sedang berpikir...',
-
+              'ThinkSpend AI sedang menganalisis...',
               style: GoogleFonts.plusJakartaSans(
                 fontSize: 11.5,
-                color: secondaryText,
+                color: textSecondary,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -1233,104 +1345,82 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
   // ============================================================
 
   Widget _buildInputArea() {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
+    final background = AppColors.background(context);
+    final surface = AppColors.surface(context);
+    final border = AppColors.border(context);
+    final textPrimary = AppColors.textPrimary(context);
+    final mutedText = AppColors.muted(context);
+    const blue = AppColors.primaryBlue;
 
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
       decoration: BoxDecoration(
         color: background,
-
-        boxShadow: [
-          BoxShadow(
-            color: navy.withValues(alpha: 0.035),
-            blurRadius: 12,
-            offset: const Offset(0, -4),
-          ),
-        ],
       ),
-
       child: SafeArea(
         top: false,
-
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
-
           children: [
             Expanded(
               child: TextField(
                 controller: messageController,
-
                 minLines: 1,
                 maxLines: 4,
-
                 style: GoogleFonts.plusJakartaSans(
                   fontSize: 13,
-                  color: navy,
+                  color: textPrimary,
                   fontWeight: FontWeight.w500,
                 ),
-
                 decoration: InputDecoration(
                   hintText: 'Tanya ThinkSpend AI...',
-
                   hintStyle: GoogleFonts.plusJakartaSans(
                     fontSize: 13,
                     color: mutedText,
                     fontWeight: FontWeight.w500,
                   ),
-
                   filled: true,
-
-                  fillColor: Colors.white,
-
+                  fillColor: surface,
                   contentPadding: const EdgeInsets.symmetric(
                     horizontal: 16,
-                    vertical: 13,
+                    vertical: 12,
                   ),
-
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(color: borderColor),
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: border),
                   ),
-
                   enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide: const BorderSide(color: borderColor),
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(color: border),
                   ),
-
                   focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius: BorderRadius.circular(16),
                     borderSide: const BorderSide(color: blue, width: 1.4),
                   ),
                 ),
-
                 onSubmitted: (value) {
                   askAi(value);
                 },
               ),
             ),
-
-            const SizedBox(width: 9),
-
+            const SizedBox(width: 8),
             GestureDetector(
               onTap: isTyping
                   ? null
                   : () {
                       askAi(messageController.text);
                     },
-
               child: Container(
-                width: 48,
-                height: 48,
-
+                width: 46,
+                height: 46,
                 decoration: BoxDecoration(
                   color: isTyping ? mutedText : blue,
-
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-
                 child: const Icon(
                   Icons.arrow_upward_rounded,
                   color: Colors.white,
-                  size: 22,
+                  size: 20,
                 ),
               ),
             ),
@@ -1348,6 +1438,11 @@ Semakin banyak transaksi dan target yang kamu catat, semakin baik analisis yang 
 class _ChatMessage {
   final String text;
   final bool isUser;
+  final String? originalQuestion;
 
-  const _ChatMessage({required this.text, required this.isUser});
+  const _ChatMessage({
+    required this.text,
+    required this.isUser,
+    this.originalQuestion,
+  });
 }

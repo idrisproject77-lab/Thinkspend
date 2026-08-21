@@ -1,3 +1,7 @@
+/// Model entitas target tabungan (Saving Goal) pengguna.
+///
+/// Menyimpan informasi target dana, progres terkumpul, deadline,
+/// dan tingkat prioritas untuk fitur Saving Planner dan pilar tabungan.
 class GoalModel {
   final int? id;
   final int userId;

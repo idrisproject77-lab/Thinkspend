@@ -3,7 +3,12 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:thinkspend/databases/database_helper.dart';
 import 'package:thinkspend/pages/main_page.dart';
 import 'package:thinkspend/pages/register_page.dart';
+import 'package:thinkspend/services/session_service.dart';
 
+/// Halaman autentikasi masuk (Login) ThinkSpend.
+///
+/// Memverifikasi email dan password ke database SQLite via [DatabaseHelper.loginUser],
+/// serta menyimpan status login persisten melalui [SessionService.saveSession].
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
 
@@ -148,13 +153,22 @@ class _LoginPageState extends State<LoginPage> {
           'LOGIN BERHASIL: ${user.name} (${user.email})',
         );
 
+        // KENAPA SESSION DISIMPAN:
+        // Menyimpan status login dan user ID ke SharedPreferences agar ketika aplikasi
+        // dibuka kembali, user langsung masuk tanpa perlu memasukkan kredensial lagi.
+        await SessionService.instance.saveSession(
+          userId: user.id!,
+          lastPage: 0,
+        );
+
+        if (!mounted) return;
+
         Navigator.pushReplacement(
           context,
-
           MaterialPageRoute(
-            builder: (context) =>
-                MainPage(
+            builder: (context) => MainPage(
               user: user,
+              initialIndex: 0,
             ),
           ),
         );
@@ -428,7 +442,7 @@ class _LoginPageState extends State<LoginPage> {
                           alpha: 0.05,
                         ),
 
-                        blurRadius: 18,
+                        blurRadius: 4,
 
                         offset:
                             const Offset(
@@ -458,7 +472,7 @@ class _LoginPageState extends State<LoginPage> {
                         color:
                             primaryBlue,
 
-                        size: 300,
+                        size: 500,
                       );
                     },
                   ),

@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:thinkspend/databases/database_helper.dart';
 import 'package:thinkspend/models/user_model.dart';
 
+/// Halaman untuk mengganti kata sandi akun pengguna.
+///
+/// Memvalidasi kesesuaian password lama, kecocokan konfirmasi password baru,
+/// dan memperbarui kredensial di SQLite.
 class ChangePasswordPage extends StatefulWidget {
   final UserModel user;
 

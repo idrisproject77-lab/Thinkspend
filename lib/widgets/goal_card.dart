@@ -4,6 +4,10 @@ import 'package:thinkspend/services/privacy_service.dart';
 import 'package:thinkspend/services/theme_service.dart';
 import 'package:thinkspend/utils/currency_formatter.dart';
 
+/// Widget kartu untuk menampilkan progres target tabungan (Saving Goal).
+///
+/// Menampilkan persentase pencapaian, nominal terkumpul/target (dengan sensor privasi),
+/// badge prioritas (Low/Medium/High), dan deadline.
 class GoalCard extends StatelessWidget {
   final GoalModel goal;
   final VoidCallback? onTap;

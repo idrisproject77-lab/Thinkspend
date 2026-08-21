@@ -17,6 +17,18 @@ class DatabaseHelper {
 
   DatabaseHelper._init();
 
+  /// Helper khusus pengujian unit/widget untuk menginjeksikan in-memory database.
+  @visibleForTesting
+  static void setDatabaseForTesting(Database? db) {
+    _database = db;
+  }
+
+  /// Helper khusus pengujian untuk membuat skema tabel pada in-memory database.
+  @visibleForTesting
+  Future<void> createDBForTesting(Database db, int version) async {
+    await _createDB(db, version);
+  }
+
   /// Getter database asinkron: membuka koneksi baru jika belum ada (lazy initialization).
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -155,6 +167,28 @@ class DatabaseHelper {
         email,
         password,
       ],
+      limit: 1,
+    );
+
+    if (result.isEmpty) {
+      return null;
+    }
+
+    return UserModel.fromMap(
+      result.first,
+    );
+  }
+
+  /// Mengambil data user berdasarkan ID untuk validasi session login persisten.
+  Future<UserModel?> getUserById(
+    int id,
+  ) async {
+    final db = await database;
+
+    final result = await db.query(
+      'users',
+      where: 'id = ?',
+      whereArgs: [id],
       limit: 1,
     );
 

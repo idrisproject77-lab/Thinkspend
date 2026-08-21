@@ -4,6 +4,10 @@ import 'package:thinkspend/models/goal_model.dart';
 import 'package:thinkspend/models/user_model.dart';
 import 'package:thinkspend/utils/currency_input_formatter.dart';
 
+/// Halaman pembuatan target tabungan baru.
+///
+/// Mengumpulkan data nama target, target nominal dana, nominal terkumpul saat ini,
+/// batas waktu (deadline), dan prioritas (Low/Medium/High) untuk disimpan ke SQLite.
 class AddGoalPage extends StatefulWidget {
   final UserModel user;
 

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:thinkspend/databases/database_helper.dart';
 import 'package:thinkspend/models/user_model.dart';
 
+/// Halaman untuk memperbarui data identitas pengguna (nama, email, no telepon).
+///
+/// Menyimpan perubahan langsung ke SQLite melalui [DatabaseHelper.updateUser].
 class EditProfilePage extends StatefulWidget {
   final UserModel user;
 

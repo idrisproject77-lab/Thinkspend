@@ -3,8 +3,15 @@ import 'package:thinkspend/databases/database_helper.dart';
 import 'package:thinkspend/models/goal_model.dart';
 import 'package:thinkspend/models/transaction_model.dart';
 import 'package:thinkspend/models/user_model.dart';
+import 'package:thinkspend/services/financial_analyzer.dart';
 import 'package:thinkspend/utils/currency_formatter.dart';
 
+/// Halaman diagnostik Financial Health ThinkSpend.
+///
+/// Menggunakan [FinancialAnalyzer] sebagai Single Source of Truth untuk menampilkan:
+/// - Skor total kesehatan keuangan (0 - 100) dan status (Keuangan Sehat, Cukup Sehat, Perlu Perhatian, Perlu Perbaikan).
+/// - Rincian skor dan insight dari 4 pilar: Cash Flow, Pengeluaran, Tabungan, dan Konsistensi.
+/// - Tips dan rekomendasi aksi perbaikan kondisi finansial.
 class FinancialHealthPage extends StatefulWidget {
   final UserModel user;
 
@@ -63,368 +70,44 @@ class _FinancialHealthPageState extends State<FinancialHealthPage> {
   }
 
   // ============================================================
-  // SCORE CASH FLOW
+  // FINANCIAL HEALTH ENGINE (DELEGATED TO SSOT: FinancialAnalyzer)
   // ============================================================
 
-  int getCashFlowScore() {
-    if (totalIncome <= 0) {
-      return 0;
-    }
+  HealthScoreBreakdown get breakdown => FinancialAnalyzer.calculateBreakdown(
+        income: totalIncome,
+        expense: totalExpense,
+        monthlyBudget: widget.user.monthlyBudget,
+        transactions: transactions,
+      );
 
-    if (totalExpense <= 0) {
-      return 40;
-    }
+  int getCashFlowScore() => breakdown.cashFlowScore;
 
-    final ratio = totalExpense / totalIncome;
+  int getExpenseScore() => breakdown.expenseScore;
 
-    if (ratio <= 0.30) {
-      return 40;
-    }
+  int getSavingScore() => breakdown.savingScore;
 
-    if (ratio <= 0.50) {
-      return 35;
-    }
+  int getConsistencyScore() => breakdown.consistencyScore;
 
-    if (ratio <= 0.70) {
-      return 28;
-    }
+  int get totalScore => breakdown.totalScore;
 
-    if (ratio <= 0.85) {
-      return 20;
-    }
+  double? get healthScore => FinancialAnalyzer.calculateHealthScore(
+        income: totalIncome,
+        expense: totalExpense,
+        monthlyBudget: widget.user.monthlyBudget,
+        transactions: transactions,
+      );
 
-    if (ratio < 1.0) {
-      return 10;
-    }
+  String get healthStatus => FinancialAnalyzer.getHealthStatus(healthScore);
 
-    return 0;
-  }
+  Color get healthColor => FinancialAnalyzer.getHealthColor(healthScore);
 
-  // ============================================================
-  // SCORE PENGELUARAN
-  // ============================================================
+  String getCashFlowInsight() => breakdown.cashFlowInsight;
 
-  int getExpenseScore() {
-    if (totalIncome <= 0) {
-      return 0;
-    }
+  String getExpenseInsight() => breakdown.expenseInsight;
 
-    final ratio = totalExpense / totalIncome;
+  String getSavingInsight() => breakdown.savingInsight;
 
-    if (ratio <= 0.30) {
-      return 25;
-    }
-
-    if (ratio <= 0.50) {
-      return 22;
-    }
-
-    if (ratio <= 0.70) {
-      return 18;
-    }
-
-    if (ratio <= 0.85) {
-      return 12;
-    }
-
-    if (ratio < 1.0) {
-      return 6;
-    }
-
-    return 0;
-  }
-
-  // ============================================================
-  // SCORE TABUNGAN
-  // ============================================================
-
-  int getSavingScore() {
-    if (totalIncome <= 0) {
-      return 0;
-    }
-
-    final available = totalIncome - totalExpense;
-
-    if (available <= 0) {
-      return 0;
-    }
-
-    final savingRatio = available / totalIncome;
-
-    if (savingRatio >= 0.40) {
-      return 20;
-    }
-
-    if (savingRatio >= 0.30) {
-      return 17;
-    }
-
-    if (savingRatio >= 0.20) {
-      return 14;
-    }
-
-    if (savingRatio >= 0.10) {
-      return 10;
-    }
-
-    return 5;
-  }
-
-  // ============================================================
-  // SCORE KONSISTENSI
-  // ============================================================
-
- int getConsistencyScore() {
-  if (transactions.isEmpty) {
-    return 0;
-  }
-
-  final now = DateTime.now();
-
-  final activeDays = <String>{};
-
-  for (final transaction in transactions) {
-    try {
-      final date = DateTime.parse(transaction.date);
-
-      final difference =
-          DateTime(now.year, now.month, now.day)
-              .difference(
-                DateTime(
-                  date.year,
-                  date.month,
-                  date.day,
-                ),
-              )
-              .inDays;
-
-      if (difference >= 0 && difference < 7) {
-        activeDays.add(
-          '${date.year}-${date.month}-${date.day}',
-        );
-      }
-    } catch (_) {
-      // Abaikan tanggal transaksi
-      // yang tidak valid.
-    }
-  }
-
-  final activeDayCount = activeDays.length;
-
-  if (activeDayCount >= 7) {
-    return 15;
-  }
-
-  if (activeDayCount >= 5) {
-    return 10;
-  }
-
-  if (activeDayCount >= 3) {
-    return 6;
-  }
-
-  return 3;
-}
-  // ============================================================
-  // TOTAL SCORE
-  // ============================================================
-
-  int get totalScore {
-    final score =
-        getCashFlowScore() +
-        getExpenseScore() +
-        getSavingScore() +
-        getConsistencyScore();
-
-    return score.clamp(0, 100);
-  }
-
-  // ============================================================
-  // STATUS
-  // ============================================================
-
-  String get healthStatus {
-    if (totalIncome <= 0) {
-      return 'Belum Ada Data';
-    }
-
-    if (totalScore >= 80) {
-      return 'Sangat Sehat';
-    }
-
-    if (totalScore >= 60) {
-      return 'Cukup Sehat';
-    }
-
-    if (totalScore >= 40) {
-      return 'Perlu Perhatian';
-    }
-
-    return 'Perlu Perbaikan';
-  }
-
-  Color get healthColor {
-    if (totalIncome <= 0) {
-      return Colors.grey;
-    }
-
-    if (totalScore >= 80) {
-      return Colors.green;
-    }
-
-    if (totalScore >= 60) {
-      return Colors.blue;
-    }
-
-    if (totalScore >= 40) {
-      return Colors.orange;
-    }
-
-    return Colors.red;
-  }
-
-  // ============================================================
-  // FORMAT RUPIAH
-  // ============================================================
-
- 
-
-  // ============================================================
-  // INSIGHT CASH FLOW
-  // ============================================================
-
-  String getCashFlowInsight() {
-    if (totalIncome <= 0) {
-      return 'Tambahkan transaksi pemasukan '
-          'untuk mulai menganalisis kondisi '
-          'keuanganmu.';
-    }
-
-    if (totalExpense <= 0) {
-      return 'Belum ada pengeluaran yang '
-          'tercatat. Pastikan semua transaksi '
-          'dicatat agar analisis lebih akurat.';
-    }
-
-    if (totalExpense < totalIncome) {
-      return 'Pemasukanmu masih lebih besar '
-          'daripada pengeluaran.';
-    }
-
-    if (totalExpense == totalIncome) {
-      return 'Pengeluaranmu sudah sama dengan '
-          'pemasukan. Sebaiknya mulai '
-          'mengurangi pengeluaran.';
-    }
-
-    return 'Pengeluaranmu sudah melebihi '
-        'pemasukan. Kondisi ini perlu segera '
-        'diperhatikan.';
-  }
-
-  // ============================================================
-  // INSIGHT TABUNGAN
-  // ============================================================
-
-  String getExpenseInsight() {
-    if (totalIncome <= 0) {
-      return 'Belum cukup data untuk menganalisis pengeluaran.';
-    }
-
-    if (totalExpense <= 0) {
-      return 'Belum ada pengeluaran yang tercatat.';
-    }
-
-    final ratio = totalExpense / totalIncome;
-
-    if (ratio <= 0.30) {
-      return 'Pengeluaranmu masih sangat terkendali.';
-    }
-
-    if (ratio <= 0.70) {
-      return 'Pengeluaranmu masih terkendali.';
-    }
-
-    if (ratio < 1.0) {
-      return 'Pengeluaranmu mulai mendekati pemasukan.';
-    }
-
-    return 'Pengeluaranmu sudah melebihi pemasukan.';
-  }
-
-  String getSavingInsight() {
-    final remaining = totalIncome - totalExpense;
-
-    if (totalIncome <= 0) {
-      return 'Belum ada pemasukan yang bisa disisihkan.';
-    }
-
-    if (remaining <= 0) {
-      return 'Belum ada uang yang tersisa untuk ditabung.';
-    }
-
-    return 'Kamu masih punya uang yang bisa ditabung.';
-  }
-
-  // ============================================================
-  // INSIGHT KONSISTENSI
-  // ============================================================
-
-String getConsistencyInsight() {
-  if (transactions.isEmpty) {
-    return 'Belum ada transaksi yang tercatat.';
-  }
-
-  final now = DateTime.now();
-
-  final activeDays = <String>{};
-
-  for (final transaction in transactions) {
-    try {
-      final date = DateTime.parse(transaction.date);
-
-      final difference =
-          DateTime(now.year, now.month, now.day)
-              .difference(
-                DateTime(
-                  date.year,
-                  date.month,
-                  date.day,
-                ),
-              )
-              .inDays;
-
-      if (difference >= 0 && difference < 7) {
-        activeDays.add(
-          '${date.year}-${date.month}-${date.day}',
-        );
-      }
-    } catch (_) {
-      // Abaikan tanggal transaksi
-      // yang tidak valid.
-    }
-  }
-
-  final activeDayCount = activeDays.length;
-
-  if (activeDayCount >= 7) {
-    return 'Kamu konsisten mencatat transaksi '
-        'setiap hari dalam 7 hari terakhir.';
-  }
-
-  if (activeDayCount >= 5) {
-    return 'Kamu cukup konsisten mencatat transaksi '
-        'dalam 7 hari terakhir.';
-  }
-
-  if (activeDayCount >= 3) {
-    return 'Kamu mulai rutin mencatat transaksi. '
-        'Coba pertahankan kebiasaan ini.';
-  }
-
-  return 'Catatan transaksi masih belum rutin. '
-      'Coba catat transaksi setiap hari.';
-}
+  String getConsistencyInsight() => breakdown.consistencyInsight;
   // ============================================================
   // BUILD
   // ============================================================
@@ -483,7 +166,7 @@ String getConsistencyInsight() {
 
                           children: [
                             Text(
-                              totalIncome <= 0 ? '-' : '$totalScore',
+                              healthScore == null ? '-' : '$totalScore',
 
                               style: TextStyle(
                                 fontSize: 42,

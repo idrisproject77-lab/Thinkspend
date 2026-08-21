@@ -1,5 +1,8 @@
 import 'package:flutter/services.dart';
 
+/// Formatter input teks otomatis untuk format nominal uang Rupiah dengan pemisah ribuan titik (.).
+///
+/// Memastikan cursor tetap berada di posisi yang benar saat pengguna mengetik atau menghapus angka.
 class CurrencyInputFormatter extends TextInputFormatter {
   @override
   TextEditingValue formatEditUpdate(

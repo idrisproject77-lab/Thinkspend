@@ -3,6 +3,10 @@ import 'package:thinkspend/databases/database_helper.dart';
 import 'package:thinkspend/models/goal_model.dart';
 import 'package:thinkspend/utils/currency_input_formatter.dart';
 
+/// Halaman untuk menyunting data target tabungan.
+///
+/// Memungkinkan pembaruan nama target, target nominal, dana terkumpul, deadline,
+/// dan tingkat prioritas langsung ke SQLite via [DatabaseHelper.updateGoal].
 class EditGoalPage extends StatefulWidget {
   final GoalModel goal;
 

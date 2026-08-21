@@ -1,7 +1,60 @@
+import 'package:flutter/material.dart';
 import 'package:thinkspend/databases/database_helper.dart';
 import 'package:thinkspend/models/goal_model.dart';
 import 'package:thinkspend/models/transaction_model.dart';
 
+// ============================================================
+// HEALTH SCORE BREAKDOWN MODEL
+// ============================================================
+
+/// Model rincian penilaian kesehatan finansial dari 4 pilar utama:
+/// 1. Cash Flow (Maks 40 poin) -> Arus kas & rasio pengeluaran terhadap pemasukan.
+/// 2. Pengeluaran (Maks 25 poin) -> Kepatuhan terhadap budget bulanan atau pemasukan.
+/// 3. Tabungan (Maks 20 poin) -> Potensi dan rasio saldo yang dapat ditabung.
+/// 4. Konsistensi (Maks 15 poin) -> Kedisiplinan dan frekuensi pencatatan transaksi harian.
+class HealthScoreBreakdown {
+  final int cashFlowScore;
+  final int expenseScore;
+  final int savingScore;
+  final int consistencyScore;
+
+  final int maxCashFlow;
+  final int maxExpense;
+  final int maxSaving;
+  final int maxConsistency;
+
+  final String cashFlowInsight;
+  final String expenseInsight;
+  final String savingInsight;
+  final String consistencyInsight;
+
+  const HealthScoreBreakdown({
+    required this.cashFlowScore,
+    required this.expenseScore,
+    required this.savingScore,
+    required this.consistencyScore,
+    this.maxCashFlow = 40,
+    this.maxExpense = 25,
+    this.maxSaving = 20,
+    this.maxConsistency = 15,
+    required this.cashFlowInsight,
+    required this.expenseInsight,
+    required this.savingInsight,
+    required this.consistencyInsight,
+  });
+
+  int get totalScore =>
+      (cashFlowScore + expenseScore + savingScore + consistencyScore).clamp(0, 100);
+}
+
+// ============================================================
+// FINANCIAL SUMMARY MODEL
+// ============================================================
+
+/// Model ringkasan kondisi finansial lengkap pengguna.
+///
+/// Menggabungkan pemasukan, pengeluaran, saldo, kategori teratas,
+/// rata-rata harian, proyeksi 30 hari, anggaran, serta skor kesehatan finansial.
 class FinancialSummary {
   final double income;
   final double expense;
@@ -14,37 +67,23 @@ class FinancialSummary {
 
   final List<GoalModel> goals;
 
-  // ============================================================
   // DATA PERIOD
-  // ============================================================
-
   final int dataDays;
 
-  // ============================================================
   // DAILY SPENDING
-  // ============================================================
-
   final double averageDailyExpense;
 
-  // ============================================================
   // MONTHLY PROJECTION
-  // ============================================================
-
   final double projectedMonthlyExpense;
 
-  // ============================================================
   // BUDGET
-  // ============================================================
-
   final double monthlyBudget;
-
   final double budgetUsagePercentage;
 
-  // ============================================================
   // HEALTH
-  // ============================================================
-
+  final double? healthScore;
   final String healthStatus;
+  final HealthScoreBreakdown? healthBreakdown;
 
   const FinancialSummary({
     required this.income,
@@ -60,6 +99,8 @@ class FinancialSummary {
     required this.monthlyBudget,
     required this.budgetUsagePercentage,
     required this.healthStatus,
+    this.healthScore,
+    this.healthBreakdown,
   });
 
   Map<String, dynamic> toMap() {
@@ -75,13 +116,14 @@ class FinancialSummary {
       'projectedRatio': double.parse(projectedRatio.toStringAsFixed(1)),
       'topExpenseCategory': topExpenseCategory ?? 'Belum tersedia',
       'topExpenseAmount': topExpenseAmount,
+      'healthScore': healthScore,
       'healthStatus': healthStatus,
       'monthlyBudget': monthlyBudget,
     };
   }
 }
 
-/// Engine analisis keuangan untuk menghitung metrik, proyeksi, dan status kesehatan finansial.
+/// Engine analisis keuangan untuk menghitung metrik, proyeksi, dan status kesehatan finansial (Single Source of Truth).
 class FinancialAnalyzer {
   static final DatabaseHelper _database = DatabaseHelper.instance;
 
@@ -95,21 +137,17 @@ class FinancialAnalyzer {
   /// 3. Menghitung jumlah hari aktif transaksi unik (dataDays).
   /// 4. Menghitung rata-rata pengeluaran harian dan proyeksi 30 hari (jika dataDays >= 3).
   /// 5. Mengidentifikasi kategori pengeluaran tertinggi dan rasio penggunaan budget bulanan.
-  /// 6. Mengevaluasi status kesehatan finansial berdasarkan aturan multi-kondisi.
+  /// 6. Mengevaluasi skor dan status kesehatan finansial berdasarkan Single Source of Truth.
   static Future<FinancialSummary> analyze(int userId) async {
     // ----------------------------------------------------------
     // GET USER
     // ----------------------------------------------------------
 
-    final users = await _database.getUsers();
+    final currentUser = await _database.getUserById(userId);
 
-    final user = users.where((item) => item.id == userId);
-
-    if (user.isEmpty) {
+    if (currentUser == null) {
       throw Exception('User tidak ditemukan.');
     }
-
-    final currentUser = user.first;
 
     // ----------------------------------------------------------
     // GET TRANSACTIONS
@@ -188,13 +226,6 @@ class FinancialAnalyzer {
     // ==========================================================
     // MONTHLY PROJECTION
     // ==========================================================
-    //
-    // Kita tidak langsung menganggap transaksi
-    // hari pertama sebagai pola bulanan.
-    //
-    // Proyeksi baru dianggap meaningful jika
-    // data sudah tersedia minimal 3 hari.
-    // ==========================================================
 
     double projectedMonthlyExpense = 0;
 
@@ -207,7 +238,6 @@ class FinancialAnalyzer {
     // ==========================================================
 
     String? topExpenseCategory;
-
     double topExpenseAmount = 0;
 
     if (categoryTotals.isNotEmpty) {
@@ -216,7 +246,6 @@ class FinancialAnalyzer {
       );
 
       topExpenseCategory = topCategory.key;
-
       topExpenseAmount = topCategory.value;
     }
 
@@ -237,16 +266,24 @@ class FinancialAnalyzer {
     }
 
     // ==========================================================
-    // HEALTH STATUS
+    // HEALTH BREAKDOWN & SCORE (SSOT)
     // ==========================================================
 
-    final healthStatus = _calculateHealthStatus(
-      dataDays: dataDays,
+    final healthBreakdown = calculateBreakdown(
       income: income,
       expense: expense,
-      projectedExpense: projectedMonthlyExpense,
       monthlyBudget: monthlyBudget,
+      transactions: transactions,
     );
+
+    final healthScore = calculateHealthScore(
+      income: income,
+      expense: expense,
+      monthlyBudget: monthlyBudget,
+      transactions: transactions,
+    );
+
+    final healthStatus = getHealthStatus(healthScore);
 
     return FinancialSummary(
       income: income,
@@ -261,7 +298,9 @@ class FinancialAnalyzer {
       projectedMonthlyExpense: projectedMonthlyExpense,
       monthlyBudget: monthlyBudget,
       budgetUsagePercentage: budgetUsagePercentage,
+      healthScore: healthScore,
       healthStatus: healthStatus,
+      healthBreakdown: healthBreakdown,
     );
   }
 
@@ -296,7 +335,6 @@ class FinancialAnalyzer {
         uniqueDates.add(normalizedDate);
       } catch (_) {
         final normalizedDate = rawDate.split(' ').first;
-
         uniqueDates.add(normalizedDate);
       }
     }
@@ -305,226 +343,413 @@ class FinancialAnalyzer {
   }
 
   // ============================================================
-  // HEALTH STATUS
+  // SINGLE SOURCE OF TRUTH: BREAKDOWN CALCULATION
   // ============================================================
 
-  /// Menentukan status kesehatan finansial berdasarkan matriks prioritas kondisi:
-  /// - 'Belum cukup data': jika data kosong atau rentang hari aktif < 3 hari.
-  /// - 'Berisiko': jika total pengeluaran aktual > pemasukan, atau proyeksi bulanan melebihi budget / >80% pemasukan.
-  /// - 'Perlu diperhatikan': jika proyeksi pengeluaran 80-100% dari budget, atau 60-80% dari pemasukan.
-  /// - 'Cukup sehat': jika proyeksi pengeluaran < 80% budget atau < 60% pemasukan.
-  static String _calculateHealthStatus({
-    required int dataDays,
+  static HealthScoreBreakdown calculateBreakdown({
     required double income,
     required double expense,
-    required double projectedExpense,
     required double monthlyBudget,
+    required List<TransactionModel> transactions,
   }) {
     // ----------------------------------------------------------
-    // BELUM ADA DATA
+    // 1. CASH FLOW (MAKS 40)
     // ----------------------------------------------------------
+    int cashFlowScore = 0;
+    String cashFlowInsight = '';
 
-    if (income <= 0 && expense <= 0) {
-      return 'Belum cukup data';
+    if (income <= 0) {
+      cashFlowScore = 0;
+      cashFlowInsight =
+          'Tambahkan transaksi pemasukan untuk mulai menganalisis kondisi keuanganmu.';
+    } else if (expense <= 0) {
+      cashFlowScore = 40;
+      cashFlowInsight =
+          'Belum ada pengeluaran yang tercatat. Arus kas saat ini surplus penuh.';
+    } else {
+      final ratio = expense / income;
+      if (ratio <= 0.30) {
+        cashFlowScore = 40;
+      } else if (ratio <= 0.50) {
+        cashFlowScore = 35;
+      } else if (ratio <= 0.70) {
+        cashFlowScore = 28;
+      } else if (ratio <= 0.85) {
+        cashFlowScore = 20;
+      } else if (ratio < 1.0) {
+        cashFlowScore = 10;
+      } else {
+        cashFlowScore = 0;
+      }
+
+      if (expense < income) {
+        cashFlowInsight = 'Pemasukanmu masih lebih besar daripada pengeluaran.';
+      } else if (expense == income) {
+        cashFlowInsight =
+            'Pengeluaranmu sudah sama dengan pemasukan. Sebaiknya mulai mengurangi pengeluaran.';
+      } else {
+        cashFlowInsight =
+            'Pengeluaranmu sudah melebihi pemasukan. Kondisi ini perlu segera diperhatikan.';
+      }
     }
 
     // ----------------------------------------------------------
-    // DATA MASIH TERLALU SEDIKIT
+    // 2. PENGELUARAN (MAKS 25)
     // ----------------------------------------------------------
-
-    if (dataDays < 3) {
-      return 'Belum cukup data';
-    }
-
-    // ----------------------------------------------------------
-    // PENGELUARAN AKTUAL SUDAH MELEBIHI PEMASUKAN
-    // ----------------------------------------------------------
-
-    if (income > 0 && expense > income) {
-      return 'Berisiko';
-    }
-    // ----------------------------------------------------------
-    // JIKA USER PUNYA MONTHLY BUDGET PRIORITASKAN BUDGET  
-    // ----------------------------------------------------------
+    int expenseScore = 0;
+    String expenseInsight = '';
 
     if (monthlyBudget > 0) {
-      final budgetRatio = projectedExpense / monthlyBudget;
-
-      if (budgetRatio > 1.0) {
-        return 'Berisiko';
+      final budgetRatio = expense / monthlyBudget;
+      if (budgetRatio <= 0.60) {
+        expenseScore = 25;
+      } else if (budgetRatio <= 0.80) {
+        expenseScore = 20;
+      } else if (budgetRatio <= 1.00) {
+        expenseScore = 12;
+      } else {
+        expenseScore = 0;
       }
 
-      if (budgetRatio >= 0.80) {
-        return 'Perlu diperhatikan';
+      if (budgetRatio <= 0.80) {
+        expenseInsight =
+            'Pengeluaranmu masih terkendali dalam batas anggaran bulanan.';
+      } else if (budgetRatio <= 1.00) {
+        expenseInsight =
+            'Pengeluaranmu sudah mendekati batas anggaran bulanan.';
+      } else {
+        expenseInsight =
+            'Pengeluaranmu sudah melebihi anggaran bulanan yang ditetapkan.';
       }
+    } else {
+      if (income <= 0 && expense <= 0) {
+        expenseScore = 0;
+        expenseInsight = 'Belum cukup data untuk menganalisis pengeluaran.';
+      } else if (income <= 0) {
+        expenseScore = 0;
+        expenseInsight = 'Pengeluaran tercatat tanpa adanya pemasukan acuan.';
+      } else if (expense <= 0) {
+        expenseScore = 25;
+        expenseInsight = 'Belum ada pengeluaran yang tercatat.';
+      } else {
+        final spendingRatio = expense / income;
+        if (spendingRatio <= 0.30) {
+          expenseScore = 25;
+        } else if (spendingRatio <= 0.50) {
+          expenseScore = 22;
+        } else if (spendingRatio <= 0.70) {
+          expenseScore = 18;
+        } else if (spendingRatio <= 0.85) {
+          expenseScore = 12;
+        } else if (spendingRatio < 1.0) {
+          expenseScore = 6;
+        } else {
+          expenseScore = 0;
+        }
 
-      return 'Cukup sehat';
+        if (spendingRatio <= 0.30) {
+          expenseInsight = 'Pengeluaranmu masih sangat terkendali.';
+        } else if (spendingRatio <= 0.70) {
+          expenseInsight = 'Pengeluaranmu masih terkendali.';
+        } else if (spendingRatio < 1.0) {
+          expenseInsight = 'Pengeluaranmu mulai mendekati pemasukan.';
+        } else {
+          expenseInsight = 'Pengeluaranmu sudah melebihi pemasukan.';
+        }
+      }
     }
 
     // ----------------------------------------------------------
-    // JIKA BELUM ADA BUDGET
-    //
-    // GUNAKAN INCOME SEBAGAI REFERENSI
+    // 3. TABUNGAN (MAKS 20)
     // ----------------------------------------------------------
+    int savingScore = 0;
+    String savingInsight = '';
 
-    if (income > 0 && projectedExpense > 0) {
-      final incomeRatio = projectedExpense / income;
+    if (income <= 0) {
+      savingScore = 0;
+      savingInsight = 'Belum ada pemasukan yang bisa disisihkan.';
+    } else {
+      final available = income - expense;
+      if (available <= 0) {
+        savingScore = 0;
+        savingInsight = 'Belum ada uang yang tersisa untuk ditabung.';
+      } else {
+        final savingRatio = available / income;
+        if (savingRatio >= 0.40) {
+          savingScore = 20;
+        } else if (savingRatio >= 0.30) {
+          savingScore = 17;
+        } else if (savingRatio >= 0.20) {
+          savingScore = 14;
+        } else if (savingRatio >= 0.10) {
+          savingScore = 10;
+        } else {
+          savingScore = 5;
+        }
 
-      // >100% pemasukan
-      if (incomeRatio > 1.0) {
-        return 'Berisiko';
+        if (savingRatio >= 0.30) {
+          savingInsight =
+              'Potensi tabunganmu sangat baik, lebih dari 30% pemasukan tersisa.';
+        } else {
+          savingInsight =
+              'Kamu masih punya sisa saldo yang bisa dialokasikan untuk tabungan.';
+        }
       }
-
-      // 80–100% pemasukan
-      if (incomeRatio >= 0.80) {
-        return 'Berisiko';
-      }
-
-      // 60–80% pemasukan
-      if (incomeRatio >= 0.60) {
-        return 'Perlu diperhatikan';
-      }
-
-      // <60%
-      return 'Cukup sehat';
     }
 
-    return 'Belum cukup data';
+    // ----------------------------------------------------------
+    // 4. KONSISTENSI (MAKS 15)
+    // ----------------------------------------------------------
+    int consistencyScore = 0;
+    String consistencyInsight = '';
+
+    if (transactions.isEmpty) {
+      consistencyScore = 0;
+      consistencyInsight = 'Belum ada transaksi yang tercatat.';
+    } else {
+      final dataDays = _calculateDataDays(transactions);
+      final count = transactions.length;
+
+      if (dataDays >= 7 || count >= 15) {
+        consistencyScore = 15;
+        consistencyInsight =
+            'Kamu sangat konsisten dan rutin mencatat transaksi keuangan.';
+      } else if (dataDays >= 5 || count >= 10) {
+        consistencyScore = 10;
+        consistencyInsight =
+            'Kamu cukup konsisten mencatat transaksi keuangan.';
+      } else if (dataDays >= 3 || count >= 5) {
+        consistencyScore = 6;
+        consistencyInsight =
+            'Kamu mulai rutin mencatat transaksi. Coba pertahankan kebiasaan ini.';
+      } else {
+        consistencyScore = 3;
+        consistencyInsight =
+            'Catatan transaksi masih awal. Rutin mencatat transaksi setiap hari untuk hasil akurat.';
+      }
+    }
+
+    return HealthScoreBreakdown(
+      cashFlowScore: cashFlowScore,
+      expenseScore: expenseScore,
+      savingScore: savingScore,
+      consistencyScore: consistencyScore,
+      cashFlowInsight: cashFlowInsight,
+      expenseInsight: expenseInsight,
+      savingInsight: savingInsight,
+      consistencyInsight: consistencyInsight,
+    );
   }
 
   // ============================================================
-  // IS INCOME
+  // SINGLE SOURCE OF TRUTH: HEALTH SCORE CALCULATION
+  // ============================================================
+
+  static double? calculateHealthScore({
+    required double income,
+    required double expense,
+    required double monthlyBudget,
+    required List<TransactionModel> transactions,
+  }) {
+    if (transactions.isEmpty && income <= 0 && expense <= 0) {
+      return null;
+    }
+
+    if (income <= 0) {
+      return null;
+    }
+
+    final breakdown = calculateBreakdown(
+      income: income,
+      expense: expense,
+      monthlyBudget: monthlyBudget,
+      transactions: transactions,
+    );
+
+    return breakdown.totalScore.toDouble();
+  }
+
+  // ============================================================
+  // SINGLE SOURCE OF TRUTH: STATUS HEALTH SCORE
+  // ============================================================
+
+  static String getHealthStatus(double? score) {
+    if (score == null) {
+      return 'Belum Ada Data';
+    }
+
+    if (score >= 80) {
+      return 'Keuangan Sehat';
+    }
+
+    if (score >= 60) {
+      return 'Cukup Sehat';
+    }
+
+    if (score >= 40) {
+      return 'Perlu Perhatian';
+    }
+
+    return 'Perlu Perbaikan';
+  }
+
+  // ============================================================
+  // SINGLE SOURCE OF TRUTH: ICON HEALTH SCORE
+  // ============================================================
+
+  static IconData getHealthIcon(double? score) {
+    if (score == null) {
+      return Icons.analytics_outlined;
+    }
+
+    if (score >= 80) {
+      return Icons.favorite;
+    }
+
+    if (score >= 60) {
+      return Icons.sentiment_satisfied;
+    }
+
+    if (score >= 40) {
+      return Icons.warning_amber_rounded;
+    }
+
+    return Icons.error_outline;
+  }
+
+  // ============================================================
+  // SINGLE SOURCE OF TRUTH: COLOR HEALTH SCORE
+  // ============================================================
+
+  static Color getHealthColor(double? score) {
+    if (score == null) {
+      return Colors.grey;
+    }
+
+    if (score >= 80) {
+      return Colors.green;
+    }
+
+    if (score >= 60) {
+      return Colors.blue;
+    }
+
+    if (score >= 40) {
+      return Colors.orange;
+    }
+
+    return Colors.red;
+  }
+
+  // ============================================================
+  // SINGLE SOURCE OF TRUTH: DESKRIPSI HEALTH SCORE
+  // ============================================================
+
+  static String getHealthDescription(
+    double? score, {
+    required List<TransactionModel> transactions,
+    double projectedExpense = 0,
+    double income = 0,
+  }) {
+    if (score == null) {
+      if (transactions.isEmpty) {
+        return 'Belum ada data transaksi. '
+            'Mulai catat pemasukan dan pengeluaranmu '
+            'untuk melihat kesehatan keuangan.';
+      }
+
+      return 'Data keuanganmu belum memiliki pemasukan yang tercatat. '
+          'Catat pemasukanmu agar ThinkSpend dapat mengevaluasi kesehatan finansial.';
+    }
+
+    final dataDays = _calculateDataDays(transactions);
+    final dataWarning = dataDays < 3 && transactions.length < 5
+        ? ' (Catatan masih awal, catat minimal 3 hari untuk analisis tren yang lebih akurat)'
+        : '';
+
+    if (score >= 80) {
+      return 'Kondisi keuanganmu sangat baik. '
+          'Arus kas positif dan pengeluaran terkendali dengan baik.$dataWarning';
+    }
+
+    if (score >= 60) {
+      return 'Kondisi keuanganmu cukup sehat, '
+          'tetapi masih ada ruang untuk mengoptimalkan anggaran dan meningkatkan tabungan.$dataWarning';
+    }
+
+    if (score >= 40) {
+      return 'Kondisi keuanganmu perlu perhatian. '
+          'Pengeluaran mendekati pemasukan sehingga ruang tabungan menipis.$dataWarning';
+    }
+
+    return 'Kondisi keuanganmu perlu perbaikan segera. '
+        'Pengeluaran sangat tinggi atau melebihi pemasukan yang ada.$dataWarning';
+  }
+
+  // ============================================================
+  // IS INCOME / EXPENSE
   // ============================================================
 
   static bool _isIncome(TransactionModel transaction) {
     final type = transaction.type.toLowerCase().trim();
-
     return type == 'income' || type == 'pemasukan';
   }
 
-  // ============================================================
-  // IS EXPENSE
-  // ============================================================
-
   static bool _isExpense(TransactionModel transaction) {
     final type = transaction.type.toLowerCase().trim();
-
     return type == 'expense' || type == 'pengeluaran';
   }
 
   // ============================================================
-  // TOTAL GOAL TARGET
+  // GOAL UTILITIES
   // ============================================================
 
   static double totalGoalTarget(List<GoalModel> goals) {
     double total = 0;
-
     for (final goal in goals) {
       total += goal.targetAmount;
     }
-
     return total;
   }
-
-  // ============================================================
-  // TOTAL CURRENT GOAL
-  // ============================================================
 
   static double totalGoalCurrent(List<GoalModel> goals) {
     double total = 0;
-
     for (final goal in goals) {
       total += goal.currentAmount;
     }
-
     return total;
   }
-
-  // ============================================================
-  // GOAL PROGRESS
-  // ============================================================
 
   static double goalProgress(GoalModel goal) {
     if (goal.targetAmount <= 0) {
       return 0;
     }
-
     final progress = goal.currentAmount / goal.targetAmount;
-
-    if (progress < 0) {
-      return 0;
-    }
-
-    if (progress > 1) {
-      return 1;
-    }
-
+    if (progress < 0) return 0;
+    if (progress > 1) return 1;
     return progress;
   }
 
   // ============================================================
-  // PUBLIC HEALTH STATUS
+  // PUBLIC HEALTH STATUS & EXPLANATION
   // ============================================================
 
   static String financialStatus(FinancialSummary summary) {
     return summary.healthStatus;
   }
 
-  static String healthExplanation(
-  FinancialSummary summary,
-) {
-  if (summary.healthStatus ==
-      'Belum cukup data') {
-    return 'Data masih terbatas. '
-        'ThinkSpend membutuhkan '
-        'setidaknya 3 hari data untuk '
-        'membaca pola pengeluaran.';
-  }
-
-  if (summary.income <= 0) {
-    return 'Belum ada pemasukan yang '
-        'cukup untuk menjadi acuan '
-        'analisis.';
-  }
-
-  final ratio =
-      summary.projectedMonthlyExpense /
-          summary.income;
-
-  final percentage =
-      (ratio * 100).toStringAsFixed(1);
-
-  if (summary.healthStatus ==
-      'Berisiko') {
-    if (ratio > 1) {
-      return 'Jika pola pengeluaran '
-          'saat ini berlanjut, '
-          'pengeluaranmu berpotensi '
-          'melebihi pemasukan.';
+  static String healthExplanation(FinancialSummary summary) {
+    if (summary.healthStatus == 'Belum Ada Data' || summary.healthScore == null) {
+      return 'Data masih terbatas. '
+          'ThinkSpend membutuhkan setidaknya 3 hari data untuk '
+          'membaca pola pengeluaran secara komprehensif.';
     }
 
-    return 'Proyeksi pengeluaranmu '
-        'sudah mendekati batas '
-        'pemasukan. Perlu mengurangi '
-        'pengeluaran tertentu.';
+    return getHealthDescription(
+      summary.healthScore,
+      transactions: const [],
+      projectedExpense: summary.projectedMonthlyExpense,
+      income: summary.income,
+    );
   }
-
-  if (summary.healthStatus ==
-      'Perlu diperhatikan') {
-    return 'Proyeksi pengeluaranmu '
-        'menggunakan sekitar '
-        '$percentage% dari pemasukan. '
-        'Pola ini masih perlu dipantau.';
-  }
-
-  if (summary.healthStatus ==
-      'Cukup sehat') {
-    return 'Proyeksi pengeluaranmu '
-        'masih relatif terkendali '
-        'dibandingkan pemasukan.';
-  }
-
-  return '';
-}
-
 }

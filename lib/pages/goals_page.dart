@@ -8,6 +8,10 @@ import 'package:thinkspend/services/theme_service.dart';
 import 'add_goal_page.dart';
 import 'goal_detail_page.dart';
 
+/// Halaman daftar target tabungan (Goals) pengguna.
+///
+/// Menampilkan daftar kartu [GoalCard] dengan status progres, deadline, dan prioritas,
+/// serta navigasi ke penambahan target baru ([AddGoalPage]) atau detail target ([GoalDetailPage]).
 class GoalsPage extends StatefulWidget {
   final UserModel user;
 
@@ -29,6 +33,12 @@ class _GoalsPageState extends State<GoalsPage> {
   void initState() {
     super.initState();
     _loadGoals();
+  }
+
+  @override
+  void didUpdateWidget(covariant GoalsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _refreshGoals();
   }
 
   void _loadGoals() {
@@ -179,6 +189,7 @@ class _GoalsPageState extends State<GoalsPage> {
       ),
 
       floatingActionButton: FloatingActionButton(
+        heroTag: 'goals_fab',
         elevation: 2,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),

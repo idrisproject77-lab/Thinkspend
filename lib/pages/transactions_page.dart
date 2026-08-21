@@ -8,6 +8,9 @@ import 'package:thinkspend/services/theme_service.dart';
 import 'package:thinkspend/utils/currency_formatter.dart';
 import 'package:thinkspend/widgets/transaction_card.dart';
 
+/// Halaman manajemen transaksi ThinkSpend dengan 2 tab utama:
+/// 1. Riwayat Transaksi - Menampilkan daftar transaksi dengan fitur pencarian, filter tipe (Semua/Pemasukan/Pengeluaran), dan pemilih bulan.
+/// 2. Statistik - Visualisasi total pemasukan/pengeluaran, distribusi persentase per kategori, dan filter periode waktu.
 class TransactionsPage extends StatefulWidget {
   final UserModel user;
 
@@ -45,6 +48,12 @@ class _TransactionsPageState extends State<TransactionsPage> {
   @override
   void initState() {
     super.initState();
+    loadTransactions();
+  }
+
+  @override
+  void didUpdateWidget(covariant TransactionsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
     loadTransactions();
   }
 
@@ -147,6 +156,31 @@ class _TransactionsPageState extends State<TransactionsPage> {
   // STATISTIK CALCULATION (TAB STATISTIK)
   // ============================================================
 
+  String _normalizeCategory(String rawCategory) {
+    final trimmed = rawCategory.trim();
+    if (trimmed.isEmpty) return 'Other';
+
+    const standardCategories = [
+      'Food',
+      'Transport',
+      'Shopping',
+      'Bills',
+      'Entertainment',
+      'Other',
+    ];
+
+    for (final standard in standardCategories) {
+      if (standard.toLowerCase() == trimmed.toLowerCase()) {
+        return standard;
+      }
+    }
+
+    if (trimmed.length == 1) {
+      return trimmed.toUpperCase();
+    }
+    return '${trimmed[0].toUpperCase()}${trimmed.substring(1)}';
+  }
+
   void _updateStatistics() {
     final now = DateTime.now();
     List<TransactionModel> filteredData = [];
@@ -185,8 +219,9 @@ class _TransactionsPageState extends State<TransactionsPage> {
 
       if (transaction.type == 'expense') {
         expense += transaction.amount;
-        categories[transaction.category] =
-            (categories[transaction.category] ?? 0) + transaction.amount;
+        final category = _normalizeCategory(transaction.category);
+        categories[category] =
+            (categories[category] ?? 0) + transaction.amount;
       }
     }
 
@@ -932,6 +967,7 @@ class _TransactionsPageState extends State<TransactionsPage> {
         // ADD TRANSACTION FAB
         // ======================================================
         floatingActionButton: FloatingActionButton(
+          heroTag: 'transactions_fab',
           elevation: 2,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           onPressed: () async {

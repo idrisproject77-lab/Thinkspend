@@ -5,6 +5,10 @@ import 'package:thinkspend/utils/currency_formatter.dart';
 
 import 'edit_goal_page.dart';
 
+/// Halaman rincian target tabungan spesifik.
+///
+/// Menampilkan visualisasi progres bar, persentase ketercapaian, sisa dana yang dibutuhkan,
+/// tanggal target, dan aksi untuk mengedit atau menghapus target.
 class GoalDetailPage extends StatelessWidget {
   final GoalModel goal;
 

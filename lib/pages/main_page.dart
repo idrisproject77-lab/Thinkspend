@@ -1,23 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:thinkspend/models/user_model.dart';
+import 'package:thinkspend/services/session_service.dart';
 import 'package:thinkspend/views/profile_page.dart';
 
 import 'login_page.dart';
 import 'home_page.dart' as home;
 import 'transactions_page.dart' as transaction;
 import 'goals_page.dart' as goal;
+import 'ai_page.dart';
 
+/// Shell utama aplikasi ThinkSpend dengan Bottom Navigation Bar 5 tab:
+/// 1. Beranda (index 0) - Ringkasan saldo, statistik, dan pintasan cepat.
+/// 2. Transaksi (index 1) - Riwayat dan filter pemasukan/pengeluaran.
+/// 3. Target (index 2) - Manajemen tujuan dan perencanaan tabungan.
+/// 4. AI (index 3) - Chatbot asisten finansial berbasis AI.
+/// 5. Profil (index 4) - Pengaturan akun, tema, privasi, dan info aplikasi.
+///
+/// Mengintegrasikan [SessionService] untuk menyimpan dan memulihkan tab terakhir yang dibuka.
 class MainPage extends StatefulWidget {
   final UserModel user;
+  final int initialIndex;
 
-  const MainPage({super.key, required this.user});
+  const MainPage({
+    super.key,
+    required this.user,
+    this.initialIndex = 0,
+  });
 
   @override
   State<MainPage> createState() => _MainPageState();
 }
 
 class _MainPageState extends State<MainPage> {
-  int currentIndex = 0;
+  late int currentIndex;
+
+  @override
+  void initState() {
+    super.initState();
+    // BAGAIMANA CURRENT INDEX DIPULIHKAN:
+    // Menggunakan index halaman yang diteruskan saat inisialisasi MainPage
+    // (didapat dari SharedPreferences) dengan validasi rentang yang aman (0..4).
+    currentIndex = (widget.initialIndex >= 0 && widget.initialIndex <= 4)
+        ? widget.initialIndex
+        : 0;
+  }
 
   // ============================================================
   // LOGOUT
@@ -52,6 +78,12 @@ class _MainPageState extends State<MainPage> {
       return;
     }
 
+    // BAGAIMANA LOGOUT MEMBERSIHKAN SESSION:
+    // Hapus sesi login dan reset index halaman terakhir sebelum kembali ke LoginPage.
+    await SessionService.instance.clearSession();
+
+    if (!mounted) return;
+
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (context) => const LoginPage()),
@@ -82,7 +114,16 @@ class _MainPageState extends State<MainPage> {
       goal.GoalsPage(user: widget.user),
 
       // ========================================================
-      // 3. PROFIL
+      // 3. THINKSPEND AI
+      // ========================================================
+      AiPage(
+        userId: widget.user.id!,
+        userName: widget.user.name,
+        isActive: currentIndex == 3,
+      ),
+
+      // ========================================================
+      // 4. PROFIL
       // ========================================================
       ProfilePage(user: widget.user, onLogout: logout),
     ];
@@ -95,6 +136,9 @@ class _MainPageState extends State<MainPage> {
           setState(() {
             currentIndex = index;
           });
+          // BAGAIMANA CURRENT INDEX DISIMPAN:
+          // Menyimpan index tab terakhir yang dipilih ke SharedPreferences secara asinkron.
+          SessionService.instance.saveLastPage(index);
         },
         destinations: const [
           // ====================================================
@@ -122,6 +166,12 @@ class _MainPageState extends State<MainPage> {
             icon: Icon(Icons.flag_outlined),
             selectedIcon: Icon(Icons.flag),
             label: 'Target',
+          ),
+
+          NavigationDestination(
+            icon: Icon(Icons.auto_awesome_outlined),
+            selectedIcon: Icon(Icons.auto_awesome),
+            label: 'AI',
           ),
 
           // ====================================================

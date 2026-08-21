@@ -4,6 +4,10 @@ import 'package:thinkspend/services/privacy_service.dart';
 import 'package:thinkspend/services/theme_service.dart';
 import 'package:thinkspend/utils/currency_formatter.dart';
 
+/// Widget kartu untuk menampilkan ringkasan satu item transaksi.
+///
+/// Menampilkan tipe (ikon panah masuk/keluar), judul, kategori, tanggal,
+/// serta nominal Rupiah dengan warna hijau (income) / merah (expense).
 class TransactionCard extends StatelessWidget {
   final TransactionModel transaction;
   final VoidCallback? onTap;
@@ -29,14 +33,15 @@ class TransactionCard extends StatelessWidget {
         final isIncome = transaction.type == 'income';
         final accentColor = isIncome ? AppColors.green : AppColors.red;
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          decoration: BoxDecoration(
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: Material(
             color: AppColors.surface(context),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppColors.border(context), width: 1),
-          ),
-          child: ListTile(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(color: AppColors.border(context), width: 1),
+            ),
+            child: ListTile(
             contentPadding:
                 const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
             onTap: onTap,
@@ -76,7 +81,8 @@ class TransactionCard extends StatelessWidget {
               ),
             ),
           ),
-        );
+        ),
+      );
       },
     );
   }

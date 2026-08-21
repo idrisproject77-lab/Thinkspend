@@ -3,10 +3,19 @@ import 'package:thinkspend/pages/splash_screen.dart';
 import 'package:thinkspend/services/privacy_service.dart';
 import 'package:thinkspend/services/theme_service.dart';
 
+/// Entry point utama aplikasi ThinkSpend.
+///
+/// Menginisialisasi aplikasi Flutter dan mengonfigurasi tema global
+/// serta state reaktif (ThemeService & PrivacyService).
 void main() {
   runApp(const MyApp());
 }
 
+/// Root widget aplikasi ThinkSpend.
+///
+/// Mendengarkan perubahan tema (Light/Dark) dan status privasi (Sensor Saldo)
+/// secara global menggunakan [ListenableBuilder] agar seluruh UI aplikasi
+/// langsung ter-update secara reaktif dan konsisten.
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 

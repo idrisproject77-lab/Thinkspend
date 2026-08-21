@@ -5,7 +5,13 @@ import 'package:thinkspend/models/transaction_model.dart';
 import 'package:thinkspend/models/user_model.dart';
 import 'package:thinkspend/services/theme_service.dart';
 import 'package:thinkspend/utils/currency_formatter.dart';
+import 'package:thinkspend/services/privacy_service.dart';
 
+/// Halaman fitur Saving Planner ThinkSpend.
+///
+/// Menganalisis kapasitas tabungan dari sisa arus kas (Pemasukan - Pengeluaran),
+/// membandingkan total kebutuhan seluruh target tabungan, dan memberikan
+/// rekomendasi alokasi tabungan bulanan berbasis prioritas.
 class SavingPlannerPage extends StatefulWidget {
   final UserModel user;
 
@@ -81,6 +87,26 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
       return 0;
     }
     return availableMoney * 0.40;
+  }
+
+  String formatPlannerAmount(double value) {
+    if (!PrivacyService.instance.isAmountVisible) {
+      return '••••';
+    }
+
+    final amount = value.abs();
+
+    if (amount >= 1000000) {
+      final juta = amount / 1000000;
+      return 'Rp ${juta.toStringAsFixed(1)} jt';
+    }
+
+    if (amount >= 1000) {
+      final ribu = amount / 1000;
+      return 'Rp ${ribu.toStringAsFixed(0)} ribu';
+    }
+
+    return 'Rp ${amount.round()}';
   }
 
   // ============================================================
@@ -549,7 +575,7 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
                       child: Column(
                         children: [
                           Text(
-                            formatRupiah(recommendedSaving),
+                            formatPlannerAmount(recommendedSaving),
                             style: const TextStyle(
                               fontSize: 28,
                               fontWeight: FontWeight.bold,
@@ -767,7 +793,7 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
           _summaryRow(
             context,
             'Sisa target',
-            formatRupiah(remaining),
+            formatPlannerAmount(remaining),
             AppColors.orange,
           ),
           const SizedBox(height: 10),
@@ -777,7 +803,7 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
             _summaryRow(
               context,
               'Perlu ditabung / bulan',
-              formatRupiah(required),
+             formatPlannerAmount(required),
               AppColors.primaryBlue,
             ),
             const SizedBox(height: 10),
@@ -787,7 +813,7 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
           _summaryRow(
             context,
             'Estimasi kemampuan',
-            formatRupiah(recommendedSaving),
+            formatPlannerAmount(recommendedSaving),
             AppColors.green,
           ),
           const SizedBox(height: 10),
@@ -943,8 +969,7 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
           const SizedBox(height: 10),
           if (hasDeadline && required > 0) ...[
             Text(
-              'Target ini membutuhkan sekitar ${formatRupiah(required)}/bulan, sementara rekomendasi menabungmu sekitar ${formatRupiah(recommendedSaving)}/bulan.',
-              style: TextStyle(fontSize: 13, color: textPrimary, height: 1.4),
+             'Target ini membutuhkan sekitar ${formatPlannerAmount(required)}/bulan, sementara rekomendasi menabungmu sekitar ${formatPlannerAmount(recommendedSaving)}/bulan.',
             ),
             if (shortfall > 0) ...[
               const SizedBox(height: 8),
@@ -970,7 +995,7 @@ class _SavingPlannerPageState extends State<SavingPlannerPage> {
                       style: TextStyle(fontSize: 12, color: textSecondary),
                     ),
                     Text(
-                      '${formatRupiah(shortfall)}/bulan',
+                      '${formatPlannerAmount(shortfall)}/bulan',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.bold,

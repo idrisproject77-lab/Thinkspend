@@ -1,3 +1,7 @@
+/// Model entitas data pengguna (User) ThinkSpend.
+///
+/// Menyimpan informasi profil, autentikasi, serta baseline keuangan
+/// (penghasilan dan anggaran bulanan) untuk analisis finansial.
 class UserModel {
   final int? id;
   final String name;

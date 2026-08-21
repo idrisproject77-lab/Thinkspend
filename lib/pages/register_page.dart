@@ -3,6 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:thinkspend/databases/database_helper.dart';
 import 'package:thinkspend/models/user_model.dart';
 
+/// Halaman pendaftaran akun baru (Register) ThinkSpend.
+///
+/// Memvalidasi kelengkapan data (nama, email unik, no telepon, password)
+/// dan mendaftarkan pengguna baru ke database SQLite.
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
 

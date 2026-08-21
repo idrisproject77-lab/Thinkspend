@@ -5,6 +5,10 @@ import 'package:thinkspend/models/transaction_model.dart';
 import 'package:thinkspend/models/user_model.dart';
 import 'package:thinkspend/utils/currency_input_formatter.dart';
 
+/// Halaman pencatatan transaksi baru (pemasukan atau pengeluaran).
+///
+/// Menyediakan input judul, nominal dengan auto-format titik ribuan ([CurrencyInputFormatter]),
+/// kategori transaksi, tanggal, catatan opsional, serta dialog/animasi peringatan budget.
 class AddTransactionPage extends StatefulWidget {
   final UserModel user;
 

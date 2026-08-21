@@ -1,3 +1,7 @@
+/// Model entitas data transaksi pemasukan (income) dan pengeluaran (expense).
+///
+/// Terikat pada [userId] tertentu untuk isolasi multi-user dan menjadi
+/// sumber data utama penghitungan saldo, kategori, dan Financial Health.
 class TransactionModel {
   final int? id;
   final int userId;

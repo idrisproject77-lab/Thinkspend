@@ -5,8 +5,17 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:video_player/video_player.dart';
 
 // Pastikan file ini ada di folder yang sama, atau sesuaikan path-nya
+import 'package:thinkspend/databases/database_helper.dart';
+import 'package:thinkspend/models/user_model.dart';
+import 'package:thinkspend/pages/main_page.dart';
+import 'package:thinkspend/services/session_service.dart';
 import 'login_page.dart';
 
+/// Splash screen pembuka aplikasi ThinkSpend dengan video/animasi logo.
+///
+/// Bertanggung jawab memeriksa persistent session login ([SessionService])
+/// dan langsung memulihkan navigasi ke halaman terakhir ([MainPage]) jika sudah login,
+/// atau mengarahkan ke [LoginPage] jika belum memiliki sesi aktif.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
@@ -23,6 +32,10 @@ class _SplashScreenState extends State<SplashScreen>
   VideoPlayerController? _videoController;
   bool _isVideoInitialized = false;
   bool _hasVideoError = false;
+
+  UserModel? _restoredUser;
+  int _restoredLastPage = 0;
+  late final Future<void> _sessionCheckFuture;
 
   @override
   void initState() {
@@ -47,15 +60,54 @@ class _SplashScreenState extends State<SplashScreen>
     // 2. Inisialisasi Pemutar Video
     _initVideoPlayer();
 
-    // 3. Timer untuk pindah otomatis ke LoginPage (setelah 3.5 detik)
-    Timer(const Duration(milliseconds: 3500), () {
-      if (mounted) {
+    // 3. Pengecekan persistent session & last page restore secara asinkron
+    _sessionCheckFuture = _checkSession();
+
+    // 4. Timer untuk pindah otomatis (setelah 3.5 detik)
+    Timer(const Duration(milliseconds: 3500), () async {
+      await _sessionCheckFuture;
+      if (!mounted) return;
+
+      if (_restoredUser != null) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => MainPage(
+              user: _restoredUser!,
+              initialIndex: _restoredLastPage,
+            ),
+          ),
+        );
+      } else {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => const LoginPage()),
         );
       }
     });
+  }
+
+  /// BAGAIMANA SESSION DIPULIHKAN:
+  /// Mengecek apakah ada session login aktif di SharedPreferences, lalu
+  /// memvalidasi ketersediaan user di database SQLite secara asinkron.
+  /// Jika valid, user dan last page index dipulihkan untuk langsung membuka MainPage.
+  Future<void> _checkSession() async {
+    try {
+      final userId = await SessionService.instance.getSessionUserId();
+      if (userId != null) {
+        final user = await DatabaseHelper.instance.getUserById(userId);
+        if (user != null) {
+          final lastPage = await SessionService.instance.getLastPage();
+          _restoredUser = user;
+          _restoredLastPage = lastPage;
+          return;
+        }
+      }
+      // Jika session tidak valid atau user telah dihapus, bersihkan session
+      await SessionService.instance.clearSession();
+    } catch (e) {
+      debugPrint('Error validating startup session: $e');
+    }
   }
 
   Future<void> _initVideoPlayer() async {

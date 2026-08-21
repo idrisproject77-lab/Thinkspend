@@ -7,12 +7,18 @@ import 'package:thinkspend/pages/transaction_detail_page.dart';
 import 'package:thinkspend/utils/currency_formatter.dart';
 import 'package:thinkspend/widgets/transaction_card.dart';
 
+import 'package:thinkspend/services/financial_analyzer.dart';
 import 'financial_health_page.dart';
 import 'saving_planner_page.dart';
 import 'package:thinkspend/views/profile_page.dart';
 import 'package:thinkspend/services/theme_service.dart';
 import 'package:thinkspend/services/privacy_service.dart';
 
+/// Halaman Dashboard Beranda utama ThinkSpend.
+///
+/// Menampilkan saldo total, kartu ringkasan pemasukan & pengeluaran,
+/// kartu banner Financial Health dengan skor live ([FinancialAnalyzer]),
+/// menu cepat (Saving Planner, Financial Health, Profil), serta daftar transaksi terbaru.
 class HomePage extends StatefulWidget {
   final UserModel user;
   final VoidCallback onLogout;
@@ -42,6 +48,15 @@ class _HomePageState extends State<HomePage> {
     currentUser = widget.user;
 
     loadTransactions();
+  }
+
+  @override
+  void didUpdateWidget(covariant HomePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.user.id != oldWidget.user.id) {
+      currentUser = widget.user;
+      loadTransactions();
+    }
   }
 
   // ============================================================
@@ -87,119 +102,16 @@ class _HomePageState extends State<HomePage> {
   }
 
   // ============================================================
-  // FINANCIAL HEALTH SCORE
+  // FINANCIAL HEALTH SCORE (DELEGATED TO SSOT: FinancialAnalyzer)
   // ============================================================
 
   double? calculateHealthScore() {
-    if (transactions.isEmpty) {
-      return null;
-    }
-
-    double score = 0;
-
-    // ============================================================
-    // 1. CASH FLOW - MAKS 40
-    // ============================================================
-
-    if (totalIncome > 0) {
-      final spendingRatio = totalExpense / totalIncome;
-
-      if (spendingRatio <= 0.30) {
-        score += 40;
-      } else if (spendingRatio <= 0.50) {
-        score += 35;
-      } else if (spendingRatio <= 0.70) {
-        score += 28;
-      } else if (spendingRatio <= 0.85) {
-        score += 20;
-      } else if (spendingRatio < 1.0) {
-        score += 10;
-      } else {
-        score += 0;
-      }
-    } else if (totalExpense == 0) {
-      score += 20;
-    }
-
-    // ============================================================
-    // 2. PENGELUARAN - MAKS 25
-    // ============================================================
-
-    final budget = currentUser.monthlyBudget;
-
-    if (budget > 0) {
-      final budgetRatio = totalExpense / budget;
-
-      if (budgetRatio <= 0.60) {
-        score += 25;
-      } else if (budgetRatio <= 0.80) {
-        score += 20;
-      } else if (budgetRatio <= 1.00) {
-        score += 12;
-      } else {
-        score += 0;
-      }
-    } else {
-      if (totalIncome > 0) {
-        final spendingRatio = totalExpense / totalIncome;
-
-        if (spendingRatio <= 0.30) {
-          score += 25;
-        } else if (spendingRatio <= 0.50) {
-          score += 22;
-        } else if (spendingRatio <= 0.70) {
-          score += 18;
-        } else if (spendingRatio <= 0.85) {
-          score += 12;
-        } else if (spendingRatio < 1.0) {
-          score += 6;
-        } else {
-          score += 0;
-        }
-      }
-    }
-
-    // ============================================================
-    // 3. TABUNGAN - MAKS 20
-    // ============================================================
-
-    if (totalIncome > 0) {
-      final available = totalIncome - totalExpense;
-
-      if (available > 0) {
-        final savingRatio = available / totalIncome;
-
-        if (savingRatio >= 0.40) {
-          score += 20;
-        } else if (savingRatio >= 0.30) {
-          score += 17;
-        } else if (savingRatio >= 0.20) {
-          score += 14;
-        } else if (savingRatio >= 0.10) {
-          score += 10;
-        } else {
-          score += 5;
-        }
-      }
-    }
-
-    // ============================================================
-    // 4. KONSISTENSI - MAKS 15
-    // ============================================================
-
-    final transactionCount = transactions.length;
-
-    if (transactionCount >= 15) {
-      score += 15;
-    } else if (transactionCount >= 10) {
-      score += 10;
-    } else if (transactionCount >= 5) {
-      score += 6;
-    } else {
-      score += 3;
-    }
-
-    return score.clamp(0.0, 100.0);
+    return FinancialAnalyzer.calculateHealthScore(
+      income: totalIncome,
+      expense: totalExpense,
+      monthlyBudget: currentUser.monthlyBudget,
+      transactions: transactions,
+    );
   }
 
   // ============================================================
@@ -207,27 +119,7 @@ class _HomePageState extends State<HomePage> {
   // ============================================================
 
   String getHealthStatus(double? score) {
-    if (score == null) {
-      if (transactions.isEmpty) {
-        return 'Belum Ada Data';
-      }
-
-      return 'Data Belum Cukup';
-    }
-
-    if (score >= 80) {
-      return 'Keuangan Sehat';
-    }
-
-    if (score >= 60) {
-      return 'Cukup Sehat';
-    }
-
-    if (score >= 40) {
-      return 'Perlu Perhatian';
-    }
-
-    return 'Perlu Perbaikan';
+    return FinancialAnalyzer.getHealthStatus(score);
   }
 
   // ============================================================
@@ -235,23 +127,7 @@ class _HomePageState extends State<HomePage> {
   // ============================================================
 
   IconData getHealthIcon(double? score) {
-    if (score == null) {
-      return Icons.analytics_outlined;
-    }
-
-    if (score >= 80) {
-      return Icons.favorite;
-    }
-
-    if (score >= 60) {
-      return Icons.sentiment_satisfied;
-    }
-
-    if (score >= 40) {
-      return Icons.warning_amber_rounded;
-    }
-
-    return Icons.error_outline;
+    return FinancialAnalyzer.getHealthIcon(score);
   }
 
   // ============================================================
@@ -259,23 +135,7 @@ class _HomePageState extends State<HomePage> {
   // ============================================================
 
   Color getHealthColor(double? score) {
-    if (score == null) {
-      return Colors.grey;
-    }
-
-    if (score >= 80) {
-      return Colors.green;
-    }
-
-    if (score >= 60) {
-      return Colors.blue;
-    }
-
-    if (score >= 40) {
-      return Colors.orange;
-    }
-
-    return Colors.red;
+    return FinancialAnalyzer.getHealthColor(score);
   }
 
   // ============================================================
@@ -283,41 +143,10 @@ class _HomePageState extends State<HomePage> {
   // ============================================================
 
   String getHealthDescription(double? score) {
-    if (score == null) {
-      if (transactions.isEmpty) {
-        return 'Belum ada data transaksi. '
-            'Mulai catat pemasukan dan pengeluaranmu '
-            'untuk melihat kesehatan keuangan.';
-      }
-
-      return 'Data keuanganmu masih terlalu sedikit '
-          'untuk dinilai. Catat minimal 3 transaksi '
-          'agar ThinkSpend dapat memberikan penilaian '
-          'yang lebih akurat.';
-    }
-
-    if (score >= 80) {
-      return 'Kondisi keuanganmu sangat baik. '
-          'Arus kas positif dan pengeluaran terkendali '
-          'dengan baik. Pertahankan kebiasaan ini!';
-    }
-
-    if (score >= 60) {
-      return 'Kondisi keuanganmu cukup sehat, '
-          'tetapi masih ada ruang untuk mengoptimalkan '
-          'anggaran dan meningkatkan tabungan.';
-    }
-
-    if (score >= 40) {
-      return 'Pengeluaranmu mulai perlu diperhatikan. '
-          'Coba evaluasi kategori pengeluaran terbesar '
-          'dan gunakan budget dengan lebih disiplin.';
-    }
-
-    return 'Pengeluaranmu cukup tinggi dibandingkan '
-        'kondisi pemasukan atau budget. '
-        'Pertimbangkan untuk mengurangi pengeluaran '
-        'yang tidak terlalu penting.';
+    return FinancialAnalyzer.getHealthDescription(
+      score,
+      transactions: transactions,
+    );
   }
 
   // ============================================================

@@ -3,6 +3,9 @@ import 'package:thinkspend/databases/database_helper.dart';
 import 'package:thinkspend/models/transaction_model.dart';
 import 'package:thinkspend/utils/currency_input_formatter.dart';
 
+/// Halaman untuk mengubah data transaksi yang sudah ada.
+///
+/// Mengambil nilai awal transaksi dan menyimpannya kembali ke SQLite via [DatabaseHelper.updateTransaction].
 class EditTransactionPage extends StatefulWidget {
   final TransactionModel transaction;
 

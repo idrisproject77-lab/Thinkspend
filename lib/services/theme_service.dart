@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+/// Service singleton untuk mengelola preferensi tema aplikasi (Light, Dark, System).
+///
+/// Menyediakan state reaktif berbasis [ChangeNotifier] agar perubahan tema
+/// di halaman Pengaturan/Profil langsung diterapkan ke seluruh widget tree.
 class ThemeService extends ChangeNotifier {
   static final ThemeService instance = ThemeService._internal();
 
@@ -28,6 +32,10 @@ class ThemeService extends ChangeNotifier {
   }
 }
 
+/// Token warna terstandarisasi dan helper adaptif untuk tema ThinkSpend.
+///
+/// Memastikan konsistensi palet warna brand (Primary Blue, Dark Navy, Light Surface)
+/// serta mendukung transisi mulus antara Light Mode dan Dark Mode.
 class AppColors {
   // Brand & Accent
   static const Color primaryBlue = Color(0xFF2563EB);

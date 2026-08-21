@@ -6,6 +6,10 @@ import 'package:thinkspend/views/edit_profile_page.dart';
 import 'package:thinkspend/views/change_password_page.dart';
 import 'package:thinkspend/views/about_page.dart';
 
+/// Halaman profil pengguna dan pengaturan aplikasi ThinkSpend.
+///
+/// Menyediakan akses ke edit profil, ubah password, pengaturan privasi nominal,
+/// pemilihan tema (Light/Dark/System), info Tentang ThinkSpend, dan aksi logout.
 class ProfilePage extends StatelessWidget {
   final UserModel user;
   final VoidCallback onLogout;
@@ -158,11 +162,11 @@ class ProfilePage extends StatelessWidget {
             ),
             const SizedBox(height: 8),
 
-            Container(
-              decoration: BoxDecoration(
-                color: surface,
+            Material(
+              color: surface,
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: border),
+                side: BorderSide(color: border),
               ),
               child: Column(
                 children: [
@@ -230,11 +234,11 @@ class ProfilePage extends StatelessWidget {
             ),
             const SizedBox(height: 8),
 
-            Container(
-              decoration: BoxDecoration(
-                color: surface,
+            Material(
+              color: surface,
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: border),
+                side: BorderSide(color: border),
               ),
               child: Column(
                 children: [
@@ -303,11 +307,11 @@ class ProfilePage extends StatelessWidget {
             ),
             const SizedBox(height: 8),
 
-            Container(
-              decoration: BoxDecoration(
-                color: surface,
+            Material(
+              color: surface,
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: border),
+                side: BorderSide(color: border),
               ),
               child: ListTile(
                 leading: Icon(Icons.info_outline, size: 20, color: textSecondary),
